@@ -88,9 +88,9 @@ final class HttpRequest implements Runnable
 			// Start the thread.
 			thread.start();
 			
-			//statusLine = "HTTP/1.1 404 Not Found";
-			//contentTypeLine = "Content-Type: text/html" + CRLF;
-			//entityBody = "<HTML>" + "<HEAD><TITLE>Not Found</TITLE></HEAD>" + "<BODY>Not Found</BODY></HTML>";
+			statusLine = "HTTP/1.1 404 Not Found";
+			contentTypeLine = "Content-Type: text/html" + CRLF;
+			entityBody = "<HTML>" + "<HEAD><TITLE>Not Found</TITLE></HEAD>" + "<BODY>Not Found</BODY></HTML>";
 		}
 		
 		// Send the status line.
