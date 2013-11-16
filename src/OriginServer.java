@@ -1,4 +1,6 @@
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -34,18 +36,65 @@ public final class OriginServer
 		    buffer = recievePacket.getData();
 		    temp = recievePacket.getData();
 		    
-	    	//for(int i = 21; i < 1024; i++)
-	    	//	temp[i - 21] = buffer[21];
 		    
 		    //Proxy sent handshake
 		    if(new Byte(temp[13]).intValue() == 1)
 		    {	
-		    	System.out.println(String.format("%8s", Integer.toBinaryString(temp[4] & 0xFF)).replace(' ', '0') + String.format("%8s", Integer.toBinaryString(temp[5] & 0xFF)).replace(' ', '0') + String.format("%8s", Integer.toBinaryString(temp[6] & 0xFF)).replace(' ', '0') + String.format("%8s", Integer.toBinaryString(temp[7] & 0xFF)).replace(' ', '0'));
-		    	ConstructHeader(1, 1, 0, 0, ((temp[4] << 24) + (temp[5] << 16) + (temp[6] << 8) + temp[7]) + 1, recievePacket.getPort());
+		    	ConstructHeader(1, 1, 0, 0, ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]) + 1, recievePacket.getPort());
 
 		    	DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 		    	serverSocket.send(sendPacket);
-		    	System.out.println("Sent a packet back to Proxy");
+		    	System.out.println("Sent SYN back to Proxy");
+		    }
+		    //Proxy sent data request
+		    if(new Byte(temp[14]).intValue() == 1)
+		    {	
+		    	int count = 0;
+		    	for(int i = 21; i < 1024; i++)
+		    	{
+		    		if(buffer[i] != 0)
+		    			count++;
+		    		temp[i - 21] = buffer[i];
+		    	}
+		    	String fileName = new String(temp);
+		    	
+				FileInputStream fis = null;
+				boolean fileExists = true;
+				
+				File file = new File("./origin" + fileName.substring(1).trim());
+				try 
+				{
+					fis = new FileInputStream(file);
+				} 
+				catch (FileNotFoundException e) 
+				{
+					fileExists = false;
+				}
+		    	
+				if(fileExists)
+				{
+			       	ConstructHeader(0, 1, 0, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11]), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]) + count, recievePacket.getPort());
+			       	
+			       	while(fis.read(sendBuffer, 20, 1004) != -1)
+			       	{
+			       		DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+				    	serverSocket.send(sendPacket);
+				    	ConstructHeader(0, 1, 0, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11] + 1004), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]), recievePacket.getPort());
+			       	}
+			       	ConstructHeader(0, 1, 1, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11]), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]), recievePacket.getPort());
+		       		DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			    	serverSocket.send(sendPacket);
+			       	System.out.println("Sent all of the packets for the file.");
+				}
+				else
+				{
+			       	ConstructHeader(0, 1, 1, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11]), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]) + count, recievePacket.getPort());
+
+			    	DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			    	serverSocket.send(sendPacket);
+			    	System.out.println("Sent a packet back to Proxy");
+					
+				}
 		    }
 		}
 	}
