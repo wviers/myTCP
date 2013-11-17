@@ -20,6 +20,7 @@ final class HttpRequest implements Runnable
 		try 
 		{
 			processRequest();
+			return;
 		} 	
 		catch (Exception e) 
 		{
@@ -89,10 +90,6 @@ final class HttpRequest implements Runnable
 			thread.start();
 			
 			thread.join();
-			
-			statusLine = "HTTP/1.1 404 Not Found";
-			contentTypeLine = "Content-Type: text/html" + CRLF;
-			entityBody = "<HTML>" + "<HEAD><TITLE>Not Found</TITLE></HEAD>" + "<BODY>Not Found</BODY></HTML>";
 		}
 		
 		// Send the status line.
@@ -114,6 +111,7 @@ final class HttpRequest implements Runnable
 		
 		os.close();
 		br.close();
+		socket.close();
 	}
 	
 	private static void sendBytes(FileInputStream fis, OutputStream os) throws Exception

@@ -12,49 +12,50 @@ public final class OriginServer
 {
     static byte[] copyArray = new byte[4];
 	static byte[] sendBuffer = new byte[1024];
-	static int port = 2000;
+	static final int port = 2000;
+	
 	
 	public static void main(String argv[]) throws Exception
 	{
-
-		byte[] buffer = new byte[1024];
+		byte[] recieveBuffer = new byte[1024];
 		byte[] temp = new byte[1024];
 		
 	    System.out.println("Origin Server is ready");
-		
-	    @SuppressWarnings("resource")
-		DatagramSocket serverSocket = new DatagramSocket(port);
-		
+			
 		while(true) 
 		{
-			DatagramPacket recievePacket  = new DatagramPacket(buffer, 1024);
+			DatagramSocket serverSocket = new DatagramSocket(port);
+			DatagramPacket recievePacket  = new DatagramPacket(recieveBuffer, 1024);
 			
+			System.out.println();
+			System.out.println();
+			System.out.println();
 			System.out.println("Waiting for packet");
 			serverSocket.receive(recievePacket);
 		    System.out.println("Recieved a packet");
 		    
-		    buffer = recievePacket.getData();
+		    recieveBuffer = recievePacket.getData();
 		    temp = recievePacket.getData();
 		    
 		    
 		    //Proxy sent handshake
 		    if(new Byte(temp[13]).intValue() == 1)
 		    {	
-		    	ConstructHeader(1, 1, 0, 0, ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]) + 1, recievePacket.getPort());
+		    	ConstructHeader(1, 1, 0, 0, ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
 
 		    	DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 		    	serverSocket.send(sendPacket);
 		    	System.out.println("Sent SYN back to Proxy");
 		    }
 		    //Proxy sent data request
-		    if(new Byte(temp[14]).intValue() == 1)
+		    else if(new Byte(temp[14]).intValue() == 1)
 		    {	
 		    	int count = 0;
 		    	for(int i = 21; i < 1024; i++)
 		    	{
-		    		if(buffer[i] != 0)
+		    		if(recieveBuffer[i] != 0)
 		    			count++;
-		    		temp[i - 21] = buffer[i];
+		    		temp[i - 21] = recieveBuffer[i];
 		    	}
 		    	String fileName = new String(temp);
 		    	
@@ -70,35 +71,85 @@ public final class OriginServer
 				{
 					fileExists = false;
 				}
-		    	
-				if(fileExists)
+				
+				if(fileExists) //Send all of the bytes
 				{
-			       	ConstructHeader(0, 1, 0, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11]), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]) + count, recievePacket.getPort());
+			       	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + count, recievePacket.getPort());
 			       	
 			       	while(fis.read(sendBuffer, 20, 1004) != -1)
 			       	{
 			       		DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 				    	serverSocket.send(sendPacket);
-				    	ConstructHeader(0, 1, 0, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11] + 1004), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]), recievePacket.getPort());
+				    	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] + 1004), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 			       	}
-			       	ConstructHeader(0, 1, 1, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11]), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]), recievePacket.getPort());
+			       	
+			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 		       		DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 			    	serverSocket.send(sendPacket);
-			       	System.out.println("Sent all of the packets for the file.");
+			       	
+			    	System.out.println("Sent all of the packets for the file.");
+			       	System.out.println();
+			       	System.out.println("Sent FIN");
+			       	
+			        //recieve ACK
+			    	serverSocket.receive(recievePacket);		    
+				    recieveBuffer = recievePacket.getData();
+				    
+				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
+				    {	
+				    	System.out.println("FIN CORRECTLY ACKED");
+					    
+				    	serverSocket.receive(recievePacket);		    
+					    recieveBuffer = recievePacket.getData();
+					    
+					    //ACK the proxie's FIN
+						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
+					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+					    serverSocket.send(sendPacket);
+				    }
+				    else
+				    {
+				    	System.out.println("TEARDOWN FAILED");
+				    }
+
 				}
-				else
+				else //Start teardown				
 				{
-			       	ConstructHeader(0, 1, 1, ((buffer[8] << 24) + (buffer[9] << 16) + (buffer[10] << 8) + buffer[11]), ((buffer[4] << 24) + (buffer[5] << 16) + (buffer[6] << 8) + buffer[7]) + count, recievePacket.getPort());
+					//Send FIN
+			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + count, recievePacket.getPort());
 
 			    	DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 			    	serverSocket.send(sendPacket);
-			    	System.out.println("Sent a packet back to Proxy");
-					
+			    	System.out.println("Sent FIN");
+
+			    	//recieve ACK
+			    	serverSocket.receive(recievePacket);		    
+				    recieveBuffer = recievePacket.getData();
+				    
+				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7])
+				    {	
+				    	System.out.println("FIN CORRECTLY ACKED");
+					    
+				    	serverSocket.receive(recievePacket);		    
+					    recieveBuffer = recievePacket.getData();
+					    
+					    //ACK the proxie's FIN
+						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
+					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+					    serverSocket.send(sendPacket);
+				    }
+				    else
+				    {
+				    	System.out.println("TEARDOWN FAILED");
+				    }
 				}
 		    }
+		    
+		    serverSocket.close();
 		}
 	}
 	
+
 	
 	private static void ConstructHeader(int SYN, int ACK, int FIN, int seqNumber, int ackNumber, int sendPort)
 	{

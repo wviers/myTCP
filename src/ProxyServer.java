@@ -12,6 +12,10 @@ public final class ProxyServer
 		
 		while (true) 
 		{
+			System.out.println();
+			System.out.println();
+			System.out.println();
+		    System.out.println("Server is ready");
 			Socket clientSock = serverSocket.accept();
 			
 			// Construct an object to process the HTTP request message.
@@ -22,6 +26,8 @@ public final class ProxyServer
 
 			// Start the thread.
 			thread.start();
+			
+			thread.join();
 		}
 	}
 }

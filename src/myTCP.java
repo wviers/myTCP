@@ -38,6 +38,7 @@ final class myTCP implements Runnable
 		try 
 		{
 			processRequest();
+			return;
 		} 	
 		catch (Exception e) 
 		{
@@ -50,6 +51,7 @@ final class myTCP implements Runnable
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
 		
 		Handshake();
+		
 		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
 		temp = fileName.getBytes();
 		
@@ -64,23 +66,36 @@ final class myTCP implements Runnable
 	    
 		serverSocket.receive(recievePacket);
 	    recieveData = recievePacket.getData();
-	    File finalFile = new File(fileName.substring(2));
-    	FileOutputStream os = new FileOutputStream(finalFile);
     	fileExists = false;
+    	FileOutputStream os = null;
     	
-    	//Read all bytes from server till FIN
-	    while(new Byte(recieveData[15]).intValue() != 1)
+	    if(new Byte(recieveData[15]).intValue() != 1)
 	    {
+	    	File finalFile = new File(fileName.substring(2));
+	    	os = new FileOutputStream(finalFile);
 	    	fileExists = true;
-	    	os.write(recieveData, 20, 1004);
-			serverSocket.receive(recievePacket);
-		    recieveData = recievePacket.getData();
+	    
+	    
+	    	//Read all bytes from server till FIN
+	    	while(new Byte(recieveData[15]).intValue() != 1)
+	    	{
+	    		fileExists = true;
+	    		os.write(recieveData, 20, 1004);
+	    		serverSocket.receive(recievePacket);
+	    		recieveData = recievePacket.getData();
+	    	}
+	    	
+	    	RecieveCloseConn();
+	    	os.close();   
 	    }
-	    os.close();
-	    
-	    
+	    else
+	    {
+	    	RecieveCloseConn();
+	    }
 		// Send the entity body to browser
-	    String statusLine = null;
+	    @SuppressWarnings("unused")
+		String statusLine = null;
+		@SuppressWarnings("unused")
 		String contentTypeLine = null;
 		if (fileExists) 
 		{
@@ -104,6 +119,7 @@ final class myTCP implements Runnable
 			sendBytes(fis, socketOut);
 			fis.close();
 		} 
+		serverSocket.close();
 	}
 	
 	
@@ -145,27 +161,53 @@ final class myTCP implements Runnable
 	
 	private static void Handshake() throws IOException
 	{
-		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
-		
-		ConstructHeader(1, 0, 0, 0, 0);
+        DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
+        
+        ConstructHeader(1, 0, 0, 0, 0);
 
 	    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
 	    serverSocket.send(sendPacket);
 	    
 	    System.out.println("Proxy sent and should be waiting for origin");
-		serverSocket.receive(recievePacket);
+	        serverSocket.receive(recievePacket);
 	    System.out.println("After proxy recieve");
-
+	
 	    recieveData = recievePacket.getData();
 	    
 	    if(!(new Byte(recieveData[13]).intValue() == 1 && new Byte(recieveData[14]).intValue() == 1))
-	    	System.out.println("ERROR SYN OR ACK");
+	            System.out.println("ERROR SYN OR ACK");
 	    else
-	    	System.out.println("Handshake Successful");
+	            System.out.println("Handshake Successful");
 	}
 	
-	//	in case I need this    String sentence = new String(receivePacket.getData());
 	
+	private static void RecieveCloseConn() throws IOException
+	{
+		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
+		
+		//ACK the origin's FIN
+		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
+	    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
+	    serverSocket.send(sendPacket);
+	    
+	    //Send FIN
+		ConstructHeader(0, 0, 1, ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]), 0);
+	    sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
+	    serverSocket.send(sendPacket);
+	    
+	    
+	    System.out.println("Proxy sent FIN and should be waiting for origin to ACK");
+		serverSocket.receive(recievePacket);
+
+	    recieveData = recievePacket.getData();
+	    
+	    if((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11] == (sendData[4] << 24) + (sendData[5] << 16) + (sendData[6] << 8) + sendData[7] + 1)
+	    	System.out.println("FIN WAS ACKED CLOSE CONN");
+	    else
+	    	System.out.println("CLOSE CONN FAILED");
+	}
+	
+
 	private static void ConstructHeader(int SYN, int ACK, int FIN, int seqNumber, int ackNumber)
 	{
 		//byte 0-1: source port #
@@ -202,6 +244,14 @@ final class myTCP implements Runnable
 		if(ACK == 1)
 		{
 			temp = ByteBuffer.allocate(4).putInt(ackNumber).array();
+			sendData[8] = temp[0];
+			sendData[9] = temp[1];
+			sendData[10] = temp[2];
+			sendData[11] = temp[3];
+		}
+		else
+		{
+			temp = ByteBuffer.allocate(4).putInt(0).array();
 			sendData[8] = temp[0];
 			sendData[9] = temp[1];
 			sendData[10] = temp[2];
