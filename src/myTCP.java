@@ -92,16 +92,24 @@ final class myTCP implements Runnable
 	    {
 	    	RecieveCloseConn();
 	    }
+	    
+	    
 		// Send the entity body to browser
-	    @SuppressWarnings("unused")
 		String statusLine = null;
-		@SuppressWarnings("unused")
 		String contentTypeLine = null;
+		String entityBody = null;
+		
 		if (fileExists) 
 		{
 			statusLine = "HTTP/1.1 200 OK: ";
 			contentTypeLine = "Content-type: " + contentType(fileName) + CRLF;
 		} 
+		else
+		{
+            statusLine = "HTTP/1.1 404 Not Found";
+            contentTypeLine = "Content-Type: text/html" + CRLF;
+            entityBody = "<HTML>" + "<HEAD><TITLE>Not Found</TITLE></HEAD>" + "<BODY>Not Found</BODY></HTML>";
+		}
 	    
 		FileInputStream fis = null;
 		try 
@@ -114,11 +122,29 @@ final class myTCP implements Runnable
 		}
 	    
 		DataOutputStream socketOut = new DataOutputStream(socket.getOutputStream());
+		
+		// Send the status line.
+		socketOut.writeBytes(statusLine);
+
+		// Send the content type line.
+		socketOut.writeBytes(contentTypeLine);
+
+		// Send a blank line to indicate the end of the header lines.
+		socketOut.writeBytes(CRLF);
+				
+		// Send the entity body.
+
 		if (fileExists)
 		{
 			sendBytes(fis, socketOut);
 			fis.close();
 		} 
+		else 
+		{
+			socketOut.writeBytes(entityBody);
+		}
+		
+		socketOut.close();
 		serverSocket.close();
 	}
 	

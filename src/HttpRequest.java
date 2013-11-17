@@ -63,9 +63,12 @@ final class HttpRequest implements Runnable
 		// Open the requested file.
 		FileInputStream fis = null;
 		boolean fileExists = true;
-		try {
+		try 
+		{
 			fis = new FileInputStream(fileName);
-		} catch (FileNotFoundException e) {
+		} 
+		catch (FileNotFoundException e) 
+		{
 			fileExists = false;
 		}
 
@@ -102,10 +105,12 @@ final class HttpRequest implements Runnable
 		os.writeBytes(CRLF);
 		
 		// Send the entity body.
-		if (fileExists)	{
+		if (fileExists)	
+		{
 			sendBytes(fis, os);
 			fis.close();
-		} else {
+		} else 
+		{
 			os.writeBytes(entityBody);
 		}
 		

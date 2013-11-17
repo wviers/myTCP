@@ -1,10 +1,8 @@
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Random;
 
@@ -21,10 +19,11 @@ public final class OriginServer
 		byte[] temp = new byte[1024];
 		
 	    System.out.println("Origin Server is ready");
-			
+		@SuppressWarnings("resource")
+		DatagramSocket serverSocket = new DatagramSocket(port);
+		
 		while(true) 
 		{
-			DatagramSocket serverSocket = new DatagramSocket(port);
 			DatagramPacket recievePacket  = new DatagramPacket(recieveBuffer, 1024);
 			
 			System.out.println();
@@ -126,7 +125,7 @@ public final class OriginServer
 			    	serverSocket.receive(recievePacket);		    
 				    recieveBuffer = recievePacket.getData();
 				    
-				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7])
+				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
 				    {	
 				    	System.out.println("FIN CORRECTLY ACKED");
 					    
@@ -143,9 +142,7 @@ public final class OriginServer
 				    	System.out.println("TEARDOWN FAILED");
 				    }
 				}
-		    }
-		    
-		    serverSocket.close();
+		    }	    
 		}
 	}
 	
