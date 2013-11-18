@@ -4,10 +4,12 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.* ;
 import java.nio.ByteBuffer;
 import java.util.Random;
+import java.util.Timer;
 
 final class myTCP implements Runnable
 {
@@ -22,6 +24,7 @@ final class myTCP implements Runnable
     static int port;
 	static DatagramSocket serverSocket;
 	static Boolean fileExists;
+	static int TIMEOUT = 500;
 
 	// Constructor
 	public myTCP(String name, Socket theSocket) throws Exception 
@@ -29,6 +32,7 @@ final class myTCP implements Runnable
 		fileName = name;
 		socket = theSocket;
 		serverSocket = new DatagramSocket();
+		serverSocket.setSoTimeout(TIMEOUT);
 		SetPort(serverSocket.getPort());
 	}
 
@@ -52,47 +56,7 @@ final class myTCP implements Runnable
 		
 		Handshake();
 		
-		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
-		temp = fileName.getBytes();
-		
-		for(int i = 0; i < temp.length; i++)
-		{
-			sendData[i + 21] = temp[i];
-		} 
-		
-		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-	    serverSocket.send(sendPacket);
-	    System.out.println("Filename sent");
-	    
-		serverSocket.receive(recievePacket);
-	    recieveData = recievePacket.getData();
-    	fileExists = false;
-    	FileOutputStream os = null;
-    	
-	    if(new Byte(recieveData[15]).intValue() != 1)
-	    {
-	    	File finalFile = new File(fileName.substring(2));
-	    	os = new FileOutputStream(finalFile);
-	    	fileExists = true;
-	    
-	    
-	    	//Read all bytes from server till FIN
-	    	while(new Byte(recieveData[15]).intValue() != 1)
-	    	{
-	    		fileExists = true;
-	    		os.write(recieveData, 20, 1004);
-	    		serverSocket.receive(recievePacket);
-	    		recieveData = recievePacket.getData();
-	    	}
-	    	
-	    	RecieveCloseConn();
-	    	os.close();   
-	    }
-	    else
-	    {
-	    	RecieveCloseConn();
-	    }
-	    
+		DataLoop();
 	    
 		// Send the entity body to browser
 		String statusLine = null;
@@ -187,16 +151,27 @@ final class myTCP implements Runnable
 	
 	private static void Handshake() throws IOException
 	{
+		boolean checkAck = true;
         DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
         
         ConstructHeader(1, 0, 0, 0, 0);
 
-	    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-	    serverSocket.send(sendPacket);
-	    
-	    System.out.println("Proxy sent and should be waiting for origin");
-	        serverSocket.receive(recievePacket);
-	    System.out.println("After proxy recieve");
+        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
+        serverSocket.send(sendPacket);
+
+        System.out.println("Proxy sent and should be waiting for origin");
+        while(checkAck){
+        	try {
+        		serverSocket.receive(recievePacket);
+        		checkAck = false;
+        		System.out.println("After proxy recieve");
+        	} catch (InterruptedIOException e) {
+        		serverSocket.send(sendPacket);
+        		System.out.println("Packet needs retransmission: SYN packet not acked");
+        	}
+
+        }
+        serverSocket.setSoTimeout(0);
 	
 	    recieveData = recievePacket.getData();
 	    
@@ -204,6 +179,58 @@ final class myTCP implements Runnable
 	            System.out.println("ERROR SYN OR ACK");
 	    else
 	            System.out.println("Handshake Successful");
+	}
+	
+	
+	private static void DataLoop() throws IOException
+	{
+		int nameLength;
+		
+		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
+		 
+		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
+		temp = fileName.getBytes();
+		nameLength = temp.length;
+		
+		for(int i = 0; i < temp.length; i++)
+		{
+			sendData[i + 20] = temp[i];
+		} 
+		
+		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
+	    serverSocket.send(sendPacket);
+	    System.out.println("Filename sent");
+	    
+		serverSocket.receive(recievePacket);
+	    recieveData = recievePacket.getData();
+    	fileExists = false;
+    	FileOutputStream os = null;
+    	
+    	
+	    if(new Byte(recieveData[15]).intValue() != 1)
+	    {
+	    	File finalFile = new File(fileName.substring(2));
+	    	os = new FileOutputStream(finalFile);
+	    	fileExists = true;
+	    
+
+	    	//Read all bytes from server till FIN
+	    	while(new Byte(recieveData[15]).intValue() != 1)
+	    	{
+	    		fileExists = true;
+	    		
+	    		os.write(recieveData, 20, 1004);
+	    		serverSocket.receive(recievePacket);
+	    		recieveData = recievePacket.getData();
+	    	}
+	    	
+	    	RecieveCloseConn();
+	    	os.close();   
+	    }
+	    else
+	    {
+	    	RecieveCloseConn();
+	    }  
 	}
 	
 	
