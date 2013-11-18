@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Random;
 
 public final class OriginServer
@@ -11,6 +12,7 @@ public final class OriginServer
     static byte[] copyArray = new byte[4];
 	static byte[] sendBuffer = new byte[1024];
 	static final int port = 2000;
+	static ArrayList<DatagramPacket> senderBuffer = new ArrayList<DatagramPacket>();
 	
 	
 	public static void main(String argv[]) throws Exception
@@ -78,12 +80,14 @@ public final class OriginServer
 			       	while(fis.read(sendBuffer, 20, 1004) != -1)
 			       	{
 			       		DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			       		senderBuffer.add(sendPacket); //add packet to buffer
 				    	serverSocket.send(sendPacket);
 				    	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] + 1004), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 			       	}
 			       	
 			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 		       		DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+		       		senderBuffer.add(sendPacket);  //add last packet of data to buffer and send FIN
 			    	serverSocket.send(sendPacket);
 			       	
 			    	System.out.println("Sent all of the packets for the file.");
@@ -104,6 +108,7 @@ public final class OriginServer
 					    //ACK the proxie's FIN
 						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
 					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+					    senderBuffer.add(sendPacket);  //send last handshake
 					    serverSocket.send(sendPacket);
 				    }
 				    else
@@ -118,6 +123,7 @@ public final class OriginServer
 			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + count, recievePacket.getPort());
 
 			    	DatagramPacket sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			    	senderBuffer.add(sendPacket);
 			    	serverSocket.send(sendPacket);
 			    	System.out.println("Sent FIN");
 
@@ -135,6 +141,7 @@ public final class OriginServer
 					    //ACK the proxie's FIN
 						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
 					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+					    senderBuffer.add(sendPacket);
 					    serverSocket.send(sendPacket);
 				    }
 				    else

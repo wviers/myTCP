@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.* ;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Random;
 
 final class myTCP implements Runnable
@@ -22,6 +23,7 @@ final class myTCP implements Runnable
     static int port;
 	static DatagramSocket serverSocket;
 	static Boolean fileExists;
+	static ArrayList<DatagramPacket> recieverBuffer = new ArrayList<DatagramPacket>();
 
 	// Constructor
 	public myTCP(String name, Socket theSocket) throws Exception 
@@ -65,6 +67,7 @@ final class myTCP implements Runnable
 	    System.out.println("Filename sent");
 	    
 		serverSocket.receive(recievePacket);
+		recieverBuffer.add(recievePacket);  
 	    recieveData = recievePacket.getData();
     	fileExists = false;
     	FileOutputStream os = null;
@@ -82,6 +85,7 @@ final class myTCP implements Runnable
 	    		fileExists = true;
 	    		os.write(recieveData, 20, 1004);
 	    		serverSocket.receive(recievePacket);
+	    		recieverBuffer.add(recievePacket);
 	    		recieveData = recievePacket.getData();
 	    	}
 	    	
@@ -196,6 +200,7 @@ final class myTCP implements Runnable
 	    
 	    System.out.println("Proxy sent and should be waiting for origin");
 	        serverSocket.receive(recievePacket);
+	        recieverBuffer.add(recievePacket);
 	    System.out.println("After proxy recieve");
 	
 	    recieveData = recievePacket.getData();
@@ -224,6 +229,7 @@ final class myTCP implements Runnable
 	    
 	    System.out.println("Proxy sent FIN and should be waiting for origin to ACK");
 		serverSocket.receive(recievePacket);
+		recieverBuffer.add(recievePacket);
 
 	    recieveData = recievePacket.getData();
 	    
