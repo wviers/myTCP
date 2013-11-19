@@ -105,28 +105,31 @@ public final class OriginServer
 				{
 			       	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + count, recievePacket.getPort());
 			       	
+			       	checkAck = true;
+			       	
 			       	while(fis.read(sendBuffer, 20, 1004) != -1)
 			       	{
 			       		sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 				    	serverSocket.send(sendPacket);
 				    	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
-				    	
-				    	//Possible cum ack implementation
-				    	/*serverSocket.receive(recievePacket);
+						
+						while(checkAck){
+				        	try {
+				        		serverSocket.receive(recievePacket);
+				        		checkAck = false;
+				        	} catch (InterruptedIOException e) {
+				        		serverSocket.send(sendPacket);
+				        		System.out.println("Packet needs retransmission: Data not acked");
+				        	}
+						}
+					   
 					    recieveBuffer = recievePacket.getData();
-					    
-				    	if(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]) == ((sendBuffer[8] << 24) + (sendBuffer[9] << 16) + (sendBuffer[10] << 8) + sendBuffer[11]) + 1004)
-				    	{
-				    		ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
-				    	}
-				    	else
-				    	{
-				    		
-				    	}
-				    	*/
+						checkAck = true;
 			       	}
 			       	
-			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
+			       	
+			       	
+			       	ConstructHeader(0, 0, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 		       		sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 			    	serverSocket.send(sendPacket);
 			       	
@@ -134,17 +137,33 @@ public final class OriginServer
 			       	System.out.println();
 			       	System.out.println("Sent FIN");
 			       	
-			        //recieve ACK
-			    	serverSocket.receive(recievePacket);		    
+			       	//ACK for the FIN
+					while(checkAck){
+			        	try {
+			        		serverSocket.receive(recievePacket);
+			        		checkAck = false;
+			        		System.out.println("Recieved Ack for FIN");
+			        	} catch (InterruptedIOException e) {
+			        		serverSocket.send(sendPacket);
+			        		System.out.println("Packet needs retransmission: FIN not acked");
+			        	}
+					}
+					
+					serverSocket.setSoTimeout(0);
+			       		    
 				    recieveBuffer = recievePacket.getData();
+
+				    System.out.println(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]));
+				    System.out.println(((sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7])+1);
 				    
-				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
+				    
+				    if(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]) == ((sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7]) + 1)
 				    {	
 				    	System.out.println("FIN CORRECTLY ACKED");
 					    
-				    	serverSocket.receive(recievePacket);		    
-					    recieveBuffer = recievePacket.getData();
-					    
+					    serverSocket.receive(recievePacket);		    
+						recieveBuffer = recievePacket.getData();
+
 					    //ACK the proxie's FIN
 						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
 					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());

@@ -171,7 +171,6 @@ final class myTCP implements Runnable
         	}
 
         }
-        serverSocket.setSoTimeout(0);
 	
 	    recieveData = recievePacket.getData();
 	    
@@ -185,6 +184,7 @@ final class myTCP implements Runnable
 	private static void DataLoop() throws IOException
 	{
 		int nameLength;
+		boolean checkAck = true;
 		
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
 		 
@@ -198,10 +198,20 @@ final class myTCP implements Runnable
 		} 
 		
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-	    serverSocket.send(sendPacket);
-	    System.out.println("Filename sent");
+		serverSocket.send(sendPacket);
+
+		
+		while(checkAck){
+        	try {
+        		serverSocket.receive(recievePacket);
+        		checkAck = false;
+        	    System.out.println("Filename sent and ACK recieved");
+        	} catch (InterruptedIOException e) {
+        		serverSocket.send(sendPacket);
+        		System.out.println("Packet needs retransmission: Filename packet not acked");
+        	}
+		}
 	    
-		serverSocket.receive(recievePacket);
 	    recieveData = recievePacket.getData();
     	fileExists = false;
     	FileOutputStream os = null;
@@ -217,12 +227,27 @@ final class myTCP implements Runnable
 	    	//Read all bytes from server till FIN
 	    	while(new Byte(recieveData[15]).intValue() != 1)
 	    	{
+	    		checkAck = true;
 	    		fileExists = true;
 	    		
 	    		os.write(recieveData, 20, 1004);
-	    		serverSocket.receive(recievePacket);
+	    		
+	    		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1004);
+	    		sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
+	    		serverSocket.send(sendPacket);
+	    		
+	    		while(checkAck){
+	            	try {
+	            		serverSocket.receive(recievePacket);
+	            		checkAck = false;
+	            	} catch (InterruptedIOException e) {
+	            		serverSocket.send(sendPacket);
+	            		System.out.println("Packet needs retransmission: Origin did not recieve ACK");	            	}
+	    		}
 	    		recieveData = recievePacket.getData();
 	    	}
+	    	
+	    	serverSocket.setSoTimeout(0);
 	    	
 	    	RecieveCloseConn();
 	    	os.close();   
@@ -239,19 +264,26 @@ final class myTCP implements Runnable
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
 		
 		//ACK the origin's FIN
+		int test = ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1;
+		
+		System.out.println((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]);
+		System.out.println(((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
+		System.out.println(test);
 		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
 	    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
 	    serverSocket.send(sendPacket);
+	    
+		System.out.println((sendData[8] << 24) + (sendData[9] << 16) + (sendData[10] << 8) + sendData[11]);
+		System.out.println(((sendData[4] << 24) + (sendData[5] << 16) + (sendData[6] << 8) + sendData[7]));
 	    
 	    //Send FIN
 		ConstructHeader(0, 0, 1, ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]), 0);
 	    sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
 	    serverSocket.send(sendPacket);
-	    
+		
 	    
 	    System.out.println("Proxy sent FIN and should be waiting for origin to ACK");
 		serverSocket.receive(recievePacket);
-
 	    recieveData = recievePacket.getData();
 	    
 	    if((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11] == (sendData[4] << 24) + (sendData[5] << 16) + (sendData[6] << 8) + sendData[7] + 1)
