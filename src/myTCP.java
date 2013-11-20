@@ -174,7 +174,6 @@ final class myTCP implements Runnable
         	}
 
         }
-        serverSocket.setSoTimeout(0);
 	
 	    recieveData = recievePacket.getData();
 	    
@@ -188,10 +187,14 @@ final class myTCP implements Runnable
 	private static void DataLoop() throws IOException
 	{
 		int nameLength;
+		boolean checkAck = true;
 		
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
-		 
-		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
+		//construct filename request(3rd shake)
+		convertIntsSeq = addIntsSeq(recieveData,1);
+		convertIntsAck = addIntsAck(recieveData,0);
+		ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
+
 		temp = fileName.getBytes();
 		nameLength = temp.length;
 		
@@ -204,8 +207,21 @@ final class myTCP implements Runnable
 	    serverSocket.send(sendPacket);
 	    System.out.println("Filename sent");
 	    
-		serverSocket.receive(recievePacket);
+	    while(checkAck){
+        	try {
+        		serverSocket.receive(recievePacket);
+        		checkAckNumber(sendPacket.getData(), recievePacket.getData(), nameLength);
+        		checkAck = false;
+        		System.out.println("After filename ack recieved");
+        	} catch (InterruptedIOException e) {
+        		serverSocket.send(sendPacket);
+        		System.out.println("Packet needs retransmission: filename");
+        	}
+
+        }
 	    recieveData = recievePacket.getData();
+	    
+	    serverSocket.setSoTimeout(0);
 	    
 	    //send ack for first packet of data
 	    ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
@@ -343,7 +359,8 @@ final class myTCP implements Runnable
 		if(SYN == 1 && ACK == 0)
 		{
 			Random gen = new Random();
-			int seq = gen.nextInt(127);
+			//int seq = gen.nextInt(127);
+			int seq = 0;
 			temp = ByteBuffer.allocate(4).putInt(seq).array();
 			sendData[4] = temp[0];
 			sendData[5] = temp[1];

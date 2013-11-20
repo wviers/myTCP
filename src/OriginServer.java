@@ -64,11 +64,10 @@ public final class OriginServer
 			}
 		    
 		    recieveBuffer = recievePacket.getData();
-		    temp = recievePacket.getData();
 		    
 		    
 		    //Proxy sent handshake
-		    if(new Byte(temp[13]).intValue() == 1) //SYN check
+		    if(new Byte(recieveBuffer[13]).intValue() == 1) //SYN check
 		    {    
 		    	convertIntsSeq = (addIntsSeq(recieveBuffer,1));
 		    	ConstructHeader(1, 1, 0, 0, returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
@@ -80,7 +79,7 @@ public final class OriginServer
 		    	System.out.println("Sent SYN back to Proxy");
 		    }
 		    //Proxy sent data request
-		    else if(new Byte(temp[14]).intValue() == 1)
+		    else if(new Byte(recieveBuffer[14]).intValue() == 1)
 		    {	
 		    	int count = 0;
 		    	for(int i = 20; i < 1024; i++)
@@ -109,7 +108,7 @@ public final class OriginServer
 				{
 					convertIntsAck = (addIntsAck(recieveBuffer,0));
 					convertIntsSeq = addIntsSeq(recieveBuffer,count);
-			       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[0], convertIntsAck[1], convertIntsAck[2], convertIntsAck[3]), returnInt(convertIntsSeq[0], convertIntsSeq[1],convertIntsSeq[2],convertIntsSeq[3]), recievePacket.getPort());
+			       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 			       	int bytes = 0;
 			       	while((bytes = fis.read(sendBuffer, 20, 1004)) != -1)
@@ -287,7 +286,8 @@ public final class OriginServer
 		if(SYN == 1 && ACK == 1)
 		{
 			Random gen = new Random();
-			int seq = gen.nextInt(127);
+			//int seq = gen.nextInt(127);
+			int seq = 50;
 			copyArray = ByteBuffer.allocate(4).putInt(seq).array();
 			sendBuffer[4] = copyArray[0];
 			sendBuffer[5] = copyArray[1];
