@@ -207,7 +207,15 @@ final class myTCP implements Runnable
 	    serverSocket.send(sendPacket);
 	    System.out.println("Filename sent");
 	    
-	    while(checkAck){
+	    
+	    
+	    
+	    
+	    serverSocket.setSoTimeout(0);
+	    
+	    
+	    //NEW CODE KWITH CARZY DOUBLE CRAZY SHIT
+	  /*  while(checkAck){
         	try {
         		serverSocket.receive(recievePacket);
         		checkAckNumber(sendPacket.getData(), recievePacket.getData(), nameLength);
@@ -219,41 +227,106 @@ final class myTCP implements Runnable
         	}
 
         }
+       
 	    recieveData = recievePacket.getData();
-	    
-	    serverSocket.setSoTimeout(0);
+	     
 	    
 	    //send ack for first packet of data
-	    ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
-		sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
-		serverSocket.send(sendPacket);
-		
-    	fileExists = false;
+		convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
+		convertIntsAck = addIntsAck(recieveData,0);
+		ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
+
     	FileOutputStream os = null;
-    	
-    	
+		
+		//Write the first data packet
 	    if(new Byte(recieveData[15]).intValue() != 1)
 	    {
 	    	File finalFile = new File(fileName.substring(2));
 	    	os = new FileOutputStream(finalFile);
 	    	fileExists = true;
+	    }
+		os.write(recieveData, 20, 1004);
+		
+    	fileExists = false;
+
+    	int recieveCount = 0;
+    	checkAck = true;
+    	
+	    while(checkAck){
+        	try {
+          		serverSocket.send(sendPacket);
+        		serverSocket.receive(recievePacket);
+        		recieveCount++;
+        		checkAck = false;
+        		System.out.println("After filename ack recieved");
+        	} catch (InterruptedIOException e) {
+        		serverSocket.send(sendPacket);
+        		System.out.println("Packet needs retransmission: filename");
+        	}
+	    }
+    	
+    	*/
 	    
+	    //OLD CODE COOPY AND PASTED FORM GIT
+    
+        serverSocket.receive(recievePacket);
+    recieveData = recievePacket.getData();
+    
+    //send ack for first packet of data
+	convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
+	convertIntsAck = addIntsAck(recieveData,0);
+	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
+	//SEMI NEW ADDITION
+	
+	
+        sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
+        serverSocket.send(sendPacket);
+        
+    fileExists = false;
+    FileOutputStream os = null;
+    
+    
+	    if(new Byte(recieveData[15]).intValue() != 1)
+	    {
+	    	File finalFile = new File(fileName.substring(2));
+	    	os = new FileOutputStream(finalFile);
+	    	fileExists = true;
+	    	
 
 	    	//Read all bytes from server till FIN
+	    	
 	    	while(new Byte(recieveData[15]).intValue() != 1)
 	    	{
+	    		checkAck = true;
 	    		fileExists = true;
 	    		
-	    		os.write(recieveData, 20, 1004);
-	    		serverSocket.receive(recievePacket);
-	    		recieveData = recievePacket.getData();
-	    		
+	    	    while(checkAck){
+	            	try {
+	    	    		os.write(recieveData, 20, 1004);
+	            		//if(recieveCount != 1)
+	            			serverSocket.receive(recievePacket);
+	            		//recieveCount++;	            		
+	    	    		recieveData = recievePacket.getData();
+
+	            		checkAck = false;
+	            		System.out.println("After a data packet it recieved");
+	            	} catch (InterruptedIOException e) {
+	            		serverSocket.send(sendPacket);
+	            		System.out.println("Packet needs retransmission: Data ACK");
+	            	}
+
+	            }
+		
 	    		//send Ack for data
-	    		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + recieveData.length-20);
+	    		convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
+	    		convertIntsAck = addIntsAck(recieveData,0);
+	    		ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 	    		sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
 	    		serverSocket.send(sendPacket);
 	    	}
 	    	
+
+		    
 	    	RecieveCloseConn();
 	    	os.close();   
 	    }

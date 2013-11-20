@@ -14,7 +14,10 @@ public final class OriginServer
 	static byte[] sendBuffer = new byte[1024];
 	static final int port = 2000;
 	static boolean currentlyShaking = false;
+	static boolean currentlyConnected = false;
 	static int TIMEOUT = 500;
+	static byte[] convertIntsSeq = new byte[4];
+	static byte[] convertIntsAck = new byte[4];
 	
 	public static void main(String argv[]) throws Exception
 	{
@@ -45,9 +48,9 @@ public final class OriginServer
 		        		serverSocket.receive(recievePacket);
 		        		recieveBuffer = recievePacket.getData();
 		        		if(returnInt(recieveBuffer[8],recieveBuffer[9],recieveBuffer[10],recieveBuffer[11]) == (returnInt(sendBuffer[4], sendBuffer[5], sendBuffer[6], sendBuffer[7]) + 1)) {
-		        			serverSocket.setSoTimeout(0);
 		        			checkAck = false;
 		        			currentlyShaking = false;
+		        			currentlyConnected = true;
 		        			System.out.println("1st Handshake recieved");
 		        		}
 		        	} catch (InterruptedIOException e) {
@@ -79,7 +82,7 @@ public final class OriginServer
 		    	System.out.println("Sent SYN back to Proxy");
 		    }
 		    //Proxy sent data request
-		    else if(new Byte(recieveBuffer[14]).intValue() == 1)
+		    else if(new Byte(recieveBuffer[14]).intValue() == 1 && currentlyConnected == true)
 		    {	
 		    	int count = 0;
 		    	for(int i = 20; i < 1024; i++)
@@ -113,13 +116,17 @@ public final class OriginServer
 			       	int bytes = 0;
 			       	while((bytes = fis.read(sendBuffer, 20, 1004)) != -1)
 			       	{
-			       		if(bytes < 1004) {
+			       		checkAck = true;
+			       		
+			       		if(bytes < 1004) 
+			       		{
 			       			byte[] lastPack = new byte[bytes+20];
+			       			
 			       			for(int i = 0; i < bytes+20; i++)
 			       				lastPack[i] = sendBuffer[i];
+			       			
 			       			sendPacket = new DatagramPacket(lastPack, lastPack.length, recievePacket.getAddress(), recievePacket.getPort());
 			       			serverSocket.send(sendPacket);	
-			       			System.out.println("if");
 			       		}
 			       		else {	
 			       			sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
@@ -127,29 +134,26 @@ public final class OriginServer
 			       		}
 				    	
 				    	//recieve ACK for data
-				    	recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
-				    	serverSocket.receive(recievePacket);
-				    	recieveBuffer = recievePacket.getData();
-				    	
-				    	checkAckNumber(recieveBuffer, bytes);
-				    	
-				    	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
-				    	
-				    	//Possible cum ack implementation
-				    	/*serverSocket.receive(recievePacket);
-					    recieveBuffer = recievePacket.getData();
-					    
-				    	if(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]) == ((sendBuffer[8] << 24) + (sendBuffer[9] << 16) + (sendBuffer[10] << 8) + sendBuffer[11]) + 1004)
-				    	{
-				    		ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
-				    	}
-				    	else
-				    	{
-				    		
-				    	}
-				    	*/
+			    	    while(checkAck){
+			            	try {
+			            		recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
+			            		serverSocket.receive(recievePacket);
+			            		checkAckNumber(sendPacket.getData(), recievePacket.getData(), sendBuffer.length - 20);
+			            		checkAck = false;
+			            	} catch (InterruptedIOException e) {
+			            		serverSocket.send(sendPacket);
+			            		System.out.println("Packet needs retransmission: data packet");
+			            	}
+			    	    }
+	            		recieveBuffer = recievePacket.getData();
+			    	    
+			    	    convertIntsAck = addIntsAck(recieveBuffer,0);
+						convertIntsSeq = addIntsSeq(recieveBuffer,0);
+				       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 			       	}
 			       	
+        			serverSocket.setSoTimeout(0);
+        			
 			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 		       		sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 			    	serverSocket.send(sendPacket);
@@ -162,8 +166,8 @@ public final class OriginServer
 			    	serverSocket.receive(recievePacket);		    
 				    recieveBuffer = recievePacket.getData();
 				    
-				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
-				    {	
+				    //if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
+				   // {	
 				    	System.out.println("FIN CORRECTLY ACKED");
 					    
 				    	serverSocket.receive(recievePacket);		    
@@ -174,12 +178,13 @@ public final class OriginServer
 					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 					    serverSocket.send(sendPacket);
 					    
-					    currentlyShaking = false;
-				    }
-				    else
-				    {
+					    currentlyConnected = false;
+				    //}
+				   // else
+				    //{
 				    	System.out.println("TEARDOWN FAILED");
-				    }
+				    	currentlyConnected = false;
+				   // }
 				}
 				else //Start teardown				
 				{
@@ -194,8 +199,8 @@ public final class OriginServer
 			    	serverSocket.receive(recievePacket);		    
 				    recieveBuffer = recievePacket.getData();
 				    
-				    if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
-				    {	
+				   // if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
+				   // {	
 				    	System.out.println("FIN CORRECTLY ACKED");
 					    
 				    	serverSocket.receive(recievePacket);		    
@@ -206,20 +211,23 @@ public final class OriginServer
 					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 					    serverSocket.send(sendPacket);
 					    
-					    currentlyShaking = false;
-				    }
-				    else
-				    {
+					    currentlyConnected = false;
+				   // }
+				    //else
+				    //{
 				    	System.out.println("TEARDOWN FAILED");
-				    }
+				    	currentlyConnected = false;
+				   // }
 				}
 		    }	    
 		}
 	}
 	
-	private static void checkAckNumber(byte[] recieveBuffer, int bytes) {
-		if(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]) != ((sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7]) + bytes)
-		  System.out.println("Seq + data.length != ack Number");
+	private static void checkAckNumber(byte[] seq, byte[] ack, int off) {
+		convertIntsSeq = addIntsSeq(seq,off);
+		convertIntsAck = addIntsAck(ack,0);
+		if(returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]) != returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]))
+		  System.out.println("Ack does not = seq + data");
 	}
 	
 	private static int returnInt(byte b1, byte b2, byte b3, byte b4) {
