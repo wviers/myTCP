@@ -5,6 +5,7 @@ import java.io.InterruptedIOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Random;
 
 public final class OriginServer
@@ -19,6 +20,8 @@ public final class OriginServer
 	{
 		byte[] recieveBuffer = new byte[1024];
 		byte[] temp = new byte[1024];
+		byte[] convertIntsSeq = new byte[4];
+		byte[] convertIntsAck = new byte[4];
 		
 	    System.out.println("Origin Server is ready");
 		@SuppressWarnings("resource")
@@ -41,7 +44,7 @@ public final class OriginServer
 		        	try {
 		        		serverSocket.receive(recievePacket);
 		        		recieveBuffer = recievePacket.getData();
-		        		if(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]) == ((sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7]) + 1) {
+		        		if(returnInt(recieveBuffer[8],recieveBuffer[9],recieveBuffer[10],recieveBuffer[11]) == (returnInt(sendBuffer[4], sendBuffer[5], sendBuffer[6], sendBuffer[7]) + 1)) {
 		        			serverSocket.setSoTimeout(0);
 		        			checkAck = false;
 		        			currentlyShaking = false;
@@ -65,10 +68,11 @@ public final class OriginServer
 		    
 		    
 		    //Proxy sent handshake
-		    if(new Byte(temp[13]).intValue() == 1)
-		    {	
-		    	ConstructHeader(1, 1, 0, 0, ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
-
+		    if(new Byte(temp[13]).intValue() == 1) //SYN check
+		    {    
+		    	convertIntsSeq = (addIntsSeq(recieveBuffer,1));
+		    	ConstructHeader(1, 1, 0, 0, returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
+		        
 		    	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 		    	serverSocket.send(sendPacket);
 		    	currentlyShaking = true;
@@ -103,12 +107,33 @@ public final class OriginServer
 				boolean waitForACK = false;
 				if(fileExists) //Send all of the bytes
 				{
-			       	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + count, recievePacket.getPort());
-			       	
-			       	while(fis.read(sendBuffer, 20, 1004) != -1)
+					convertIntsAck = (addIntsAck(recieveBuffer,0));
+					convertIntsSeq = addIntsSeq(recieveBuffer,count);
+			       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[0], convertIntsAck[1], convertIntsAck[2], convertIntsAck[3]), returnInt(convertIntsSeq[0], convertIntsSeq[1],convertIntsSeq[2],convertIntsSeq[3]), recievePacket.getPort());
+
+			       	int bytes = 0;
+			       	while((bytes = fis.read(sendBuffer, 20, 1004)) != -1)
 			       	{
-			       		sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-				    	serverSocket.send(sendPacket);
+			       		if(bytes < 1004) {
+			       			byte[] lastPack = new byte[bytes+20];
+			       			for(int i = 0; i < bytes+20; i++)
+			       				lastPack[i] = sendBuffer[i];
+			       			sendPacket = new DatagramPacket(lastPack, lastPack.length, recievePacket.getAddress(), recievePacket.getPort());
+			       			serverSocket.send(sendPacket);	
+			       			System.out.println("if");
+			       		}
+			       		else {	
+			       			sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			       			serverSocket.send(sendPacket);	
+			       		}
+				    	
+				    	//recieve ACK for data
+				    	recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
+				    	serverSocket.receive(recievePacket);
+				    	recieveBuffer = recievePacket.getData();
+				    	
+				    	checkAckNumber(recieveBuffer, bytes);
+				    	
 				    	ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
 				    	
 				    	//Possible cum ack implementation
@@ -193,10 +218,61 @@ public final class OriginServer
 		}
 	}
 	
+	private static void checkAckNumber(byte[] recieveBuffer, int bytes) {
+		if(((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]) != ((sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7]) + bytes)
+		  System.out.println("Seq + data.length != ack Number");
+	}
+	
+	private static int returnInt(byte b1, byte b2, byte b3, byte b4) {
+		byte[] test = new byte[4];
+	    test[0] = b1;
+	    test[1] = b2;
+	    test[2] = b3;
+	    test[3] = b4;
+	    ByteBuffer bb = ByteBuffer.wrap(test);
+	    return bb.getInt();
+	}
+	
+	private static byte[] addIntsSeq(byte[] buffer, int off) {
+		byte[] test = new byte[4];
+		test[0] = buffer[4];
+	    test[1] = buffer[5];
+	    test[2] = buffer[6];
+	    test[3] = buffer[7];
+	    ByteBuffer bb = ByteBuffer.wrap(test);
+	    int sum = bb.getInt() + off;
+	    
+	    test = ByteBuffer.allocate(4).putInt(sum).array();
+	    buffer[4] = test[0];
+	    buffer[5] = test[1];
+	    buffer[6] = test[2];
+	    buffer[7] = test[3];
+	    
+	    return buffer;   
+	}
+	
+	private static byte[] addIntsAck(byte[] buffer, int off) {
+		byte[] test = new byte[4];
+		test[0] = buffer[8];
+	    test[1] = buffer[9];
+	    test[2] = buffer[10];
+	    test[3] = buffer[11];
+	    ByteBuffer bb = ByteBuffer.wrap(test);
+	    int sum = bb.getInt() + off;
+	    
+	    test = ByteBuffer.allocate(4).putInt(sum).array();
+	    buffer[8] = test[0];
+	    buffer[9] = test[1];
+	    buffer[10] = test[2];
+	    buffer[11] = test[3];
+	    
+	    return buffer; 
+	}
 
 	
 	private static void ConstructHeader(int SYN, int ACK, int FIN, int seqNumber, int ackNumber, int sendPort)
 	{
+		
 		//byte 0-1: source port #
 		copyArray = ByteBuffer.allocate(4).putInt(port).array();
 		sendBuffer[0] = copyArray[2];
@@ -256,6 +332,7 @@ public final class OriginServer
 		//byte 16-17: Window Size
 		copyArray = ByteBuffer.allocate(4).putInt(1).array();
 		sendBuffer[16] = copyArray[2];
-		sendBuffer[17] = copyArray[3];		
+		sendBuffer[17] = copyArray[3];	
+		
 	}
 }

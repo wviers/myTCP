@@ -25,6 +25,8 @@ final class myTCP implements Runnable
 	static DatagramSocket serverSocket;
 	static Boolean fileExists;
 	static int TIMEOUT = 500;
+	static byte[] convertIntsSeq = new byte[4];
+	static byte[] convertIntsAck = new byte[4];
 
 	// Constructor
 	public myTCP(String name, Socket theSocket) throws Exception 
@@ -163,6 +165,7 @@ final class myTCP implements Runnable
         while(checkAck){
         	try {
         		serverSocket.receive(recievePacket);
+        		checkAckNumber(sendPacket.getData(), recievePacket.getData(), 1);
         		checkAck = false;
         		System.out.println("After proxy recieve");
         	} catch (InterruptedIOException e) {
@@ -203,6 +206,12 @@ final class myTCP implements Runnable
 	    
 		serverSocket.receive(recievePacket);
 	    recieveData = recievePacket.getData();
+	    
+	    //send ack for first packet of data
+	    ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
+		sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
+		serverSocket.send(sendPacket);
+		
     	fileExists = false;
     	FileOutputStream os = null;
     	
@@ -222,6 +231,11 @@ final class myTCP implements Runnable
 	    		os.write(recieveData, 20, 1004);
 	    		serverSocket.receive(recievePacket);
 	    		recieveData = recievePacket.getData();
+	    		
+	    		//send Ack for data
+	    		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + recieveData.length-20);
+	    		sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
+	    		serverSocket.send(sendPacket);
 	    	}
 	    	
 	    	RecieveCloseConn();
@@ -233,6 +247,58 @@ final class myTCP implements Runnable
 	    }  
 	}
 	
+	private static void checkAckNumber(byte[] seq, byte[] ack, int off) {
+		convertIntsSeq = addIntsSeq(seq,off);
+		convertIntsAck = addIntsAck(ack,0);
+		if(returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]) != returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]))
+		  System.out.println("Ack does not = seq + data");
+	}
+	
+	private static int returnInt(byte b1, byte b2, byte b3, byte b4) {
+		byte[] test = new byte[4];
+	    test[0] = b1;
+	    test[1] = b2;
+	    test[2] = b3;
+	    test[3] = b4;
+	    ByteBuffer bb = ByteBuffer.wrap(test);
+	    return bb.getInt();
+	}
+	
+	private static byte[] addIntsSeq(byte[] buffer, int off) {
+		byte[] test = new byte[4];
+		test[0] = buffer[4];
+	    test[1] = buffer[5];
+	    test[2] = buffer[6];
+	    test[3] = buffer[7];
+	    ByteBuffer bb = ByteBuffer.wrap(test);
+	    int sum = bb.getInt() + off;
+	    
+	    test = ByteBuffer.allocate(4).putInt(sum).array();
+	    buffer[4] = test[0];
+	    buffer[5] = test[1];
+	    buffer[6] = test[2];
+	    buffer[7] = test[3];
+	    
+	    return buffer;   
+	}
+	
+	private static byte[] addIntsAck(byte[] buffer, int off) {
+		byte[] test = new byte[4];
+		test[0] = buffer[8];
+	    test[1] = buffer[9];
+	    test[2] = buffer[10];
+	    test[3] = buffer[11];
+	    ByteBuffer bb = ByteBuffer.wrap(test);
+	    int sum = bb.getInt() + off;
+	    
+	    test = ByteBuffer.allocate(4).putInt(sum).array();
+	    buffer[8] = test[0];
+	    buffer[9] = test[1];
+	    buffer[10] = test[2];
+	    buffer[11] = test[3];
+	    
+	    return buffer; 
+	}
 	
 	private static void RecieveCloseConn() throws IOException
 	{
