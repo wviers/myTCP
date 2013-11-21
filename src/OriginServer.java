@@ -152,72 +152,78 @@ public final class OriginServer
 				       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 			       	}
 			       	
-        			serverSocket.setSoTimeout(0);
-        			
-			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]), recievePacket.getPort());
-		       		sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			    	serverSocket.send(sendPacket);
-			       	
-			    	System.out.println("Sent all of the packets for the file.");
-			       	System.out.println();
+			       	convertIntsAck = addIntsAck(recieveBuffer,0);
+					convertIntsSeq = addIntsSeq(recieveBuffer,0);
+			       	ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
+			       	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			       	serverSocket.send(sendPacket);
 			       	System.out.println("Sent FIN");
+			       	checkAck = true;
 			       	
-			        //recieve ACK
-			    	serverSocket.receive(recievePacket);		    
-				    recieveBuffer = recievePacket.getData();
-				    
-				    //if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
-				   // {	
-				    	System.out.println("FIN CORRECTLY ACKED");
-					    
-				    	serverSocket.receive(recievePacket);		    
-					    recieveBuffer = recievePacket.getData();
-					    
-					    //ACK the proxie's FIN
-						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
-					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-					    serverSocket.send(sendPacket);
-					    
-					    currentlyConnected = false;
-				    //}
-				   // else
-				    //{
-				    	System.out.println("TEARDOWN FAILED");
-				    	currentlyConnected = false;
-				   // }
+			        //recieve FIN-ACK
+		    	    while(checkAck){
+		            	try {
+		            		recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
+		            		serverSocket.receive(recievePacket);
+		            		checkAckNumber(sendPacket.getData(), recievePacket.getData(), 1);
+		            		checkAck = false;
+		            	} catch (InterruptedIOException e) {
+		            		serverSocket.send(sendPacket);
+		            		System.out.println("Packet needs retransmission: FIN");
+		            	}
+		    	    }
+
+
+	      			serverSocket.setSoTimeout(0);
+	      			
+
+				    //ACK the proxie's FIN
+				    ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
+				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+				    serverSocket.send(sendPacket);
+
+
+				    System.out.println("CONNECTION CLOSED");
+				    currentlyConnected = false;
 				}
 				else //Start teardown				
 				{
 					//Send FIN
-			       	ConstructHeader(0, 1, 1, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + count, recievePacket.getPort());
+			       	convertIntsAck = addIntsAck(recieveBuffer,0);
+					convertIntsSeq = addIntsSeq(recieveBuffer,0);
+				   	ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 			    	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 			    	serverSocket.send(sendPacket);
 			    	System.out.println("Sent FIN");
 
-			    	//recieve ACK
-			    	serverSocket.receive(recievePacket);		    
-				    recieveBuffer = recievePacket.getData();
-				    
-				   // if((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11] == (sendBuffer[4] << 24) + (sendBuffer[5] << 16) + (sendBuffer[6] << 8) + sendBuffer[7] + 1)
-				   // {	
-				    	System.out.println("FIN CORRECTLY ACKED");
-					    
-				    	serverSocket.receive(recievePacket);		    
-					    recieveBuffer = recievePacket.getData();
-					    
-					    //ACK the proxie's FIN
-						ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
-					    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-					    serverSocket.send(sendPacket);
-					    
-					    currentlyConnected = false;
-				   // }
-				    //else
-				    //{
-				    	System.out.println("TEARDOWN FAILED");
-				    	currentlyConnected = false;
-				   // }
+			       	checkAck = true;
+			       	
+			        //recieve FIN-ACK
+		    	    while(checkAck){
+		            	try {
+		            		recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
+		            		serverSocket.receive(recievePacket);
+		            		checkAckNumber(sendPacket.getData(), recievePacket.getData(), 1);
+		            		checkAck = false;
+		            	} catch (InterruptedIOException e) {
+		            		serverSocket.send(sendPacket);
+		            		System.out.println("Packet needs retransmission: FIN");
+		            	}
+		    	    }
+	      			
+
+				    //ACK the proxie's FIN-ACK
+			       	convertIntsAck = addIntsAck(recieveBuffer,1);
+					convertIntsSeq = addIntsSeq(recieveBuffer,0);
+				    ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
+
+				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+				    serverSocket.send(sendPacket);
+
+
+				    System.out.println("CONNECTION CLOSED");
+				    currentlyConnected = false;
 				}
 		    }	    
 		}

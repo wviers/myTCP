@@ -228,12 +228,13 @@ final class myTCP implements Runnable
 
 				while(checkAck){
 					try {
-						//if(recieveCount != 1)
 						serverSocket.receive(recievePacket);
-						//recieveCount++;	 
 
 						recieveData = recievePacket.getData();
-						os.write(recieveData, 20, 1004);
+						if(new Byte(recieveData[15]).intValue() != 1)
+						{
+							os.write(recieveData, 20, 1004);
+						}
 						checkAck = false;
 						System.out.println("After a data packet it recieved");
 					} catch (InterruptedIOException e) {
@@ -244,15 +245,16 @@ final class myTCP implements Runnable
 				}
 
 				//send Ack for data
-				convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
-				convertIntsAck = addIntsAck(recieveData,0);
-				ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
-				sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
-				serverSocket.send(sendPacket);
+				if(new Byte(recieveData[15]).intValue() != 1)
+				{
+					convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
+					convertIntsAck = addIntsAck(recieveData,0);
+					ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
+					sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
+					serverSocket.send(sendPacket);
+				}
 			}
 
-
-			serverSocket.setSoTimeout(0);
 			RecieveCloseConn();
 			os.close();   
 		}
@@ -319,26 +321,30 @@ final class myTCP implements Runnable
 	{
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
 
-		//ACK the origin's FIN
-		ConstructHeader(0, 1, 0, ((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11]), ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]) + 1);
+		//ACK the origin's FIN with a FIN-ACK
+		convertIntsSeq = addIntsSeq(recieveData, 1);
+		convertIntsAck = addIntsAck(recieveData,0);
+		ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
 		serverSocket.send(sendPacket);
-
-		//Send FIN
-		ConstructHeader(0, 0, 1, ((recieveData[4] << 24) + (recieveData[5] << 16) + (recieveData[6] << 8) + recieveData[7]), 0);
-		sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-		serverSocket.send(sendPacket);
-
-
 		System.out.println("Proxy sent FIN and should be waiting for origin to ACK");
-		serverSocket.receive(recievePacket);
+		int sendCount = 0;
+		
+		while(sendCount < 10){
+			try {
+				serverSocket.receive(recievePacket);
+				recieveData = recievePacket.getData();
+				sendCount = 10;
+				System.out.println("After sending FIN-ACK");
+			} catch (InterruptedIOException e) {
+				sendCount++;
+				serverSocket.send(sendPacket);
+				System.out.println("Packet needs retransmission: FIN ACK");
+			}
 
-		recieveData = recievePacket.getData();
+		}
 
-		if((recieveData[8] << 24) + (recieveData[9] << 16) + (recieveData[10] << 8) + recieveData[11] == (sendData[4] << 24) + (sendData[5] << 16) + (sendData[6] << 8) + sendData[7] + 1)
-			System.out.println("FIN WAS ACKED CLOSE CONN");
-		else
-			System.out.println("CLOSE CONN FAILED");
+		System.out.println("CONN successfully closed");
 	}
 
 
