@@ -23,7 +23,7 @@ final class myTCP implements Runnable
 	static byte[] combineData = null;
 	static int port;
 	static DatagramSocket serverSocket;
-	static Boolean fileExists;
+	static boolean fileExists;
 	static int TIMEOUT = 500;
 	static byte[] convertIntsSeq = new byte[4];
 	static byte[] convertIntsAck = new byte[4];
@@ -59,6 +59,8 @@ final class myTCP implements Runnable
 		Handshake();
 
 		DataLoop();
+		
+		System.out.println("After DataLoop");
 
 		// Send the entity body to browser
 		String statusLine = null;
@@ -74,7 +76,7 @@ final class myTCP implements Runnable
 		{
 			statusLine = "HTTP/1.1 404 Not Found";
 			contentTypeLine = "Content-Type: text/html" + CRLF;
-			entityBody = "<HTML>" + "<HEAD><TITLE>Not Found</TITLE></HEAD>" + "<BODY>Not Found</BODY></HTML>";
+			entityBody = "<HTML>" + "<HEAD><TITLE>Not Found</TITLE></HEAD>" + "<BODY>HTTP/1.1 404 Not Found</BODY></HTML>";
 		}
 
 		FileInputStream fis = null;
@@ -109,9 +111,11 @@ final class myTCP implements Runnable
 		{
 			socketOut.writeBytes(entityBody);
 		}
-
-		socketOut.close();
+        if(socketOut != null) 
+		  socketOut.close();
 		serverSocket.close();
+		recieveData = new byte[1024];
+		sendData = new byte[1024];
 	}
 
 
@@ -205,63 +209,60 @@ final class myTCP implements Runnable
 
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
 		serverSocket.send(sendPacket);
+		for(int i = 0; i < 1024; i++) {
+			System.out.print(recieveData[i]);
+		}
+		System.out.println();
 		System.out.println("Filename sent");
 
 
 		fileExists = false;
 		FileOutputStream os = null;
+		boolean fileCreated = false;
 
+		//Read all bytes from server till FIN
 
-		if(new Byte(recieveData[15]).intValue() != 1)
+		while(new Byte(recieveData[15]).intValue() != 1)
 		{
-			File finalFile = new File(fileName.substring(2));
-			os = new FileOutputStream(finalFile);
-			fileExists = true;
+			checkAck = true;
 
-
-			//Read all bytes from server till FIN
-
-			while(new Byte(recieveData[15]).intValue() != 1)
-			{
-				checkAck = true;
-				fileExists = true;
-
-				while(checkAck){
-					try {
-						serverSocket.receive(recievePacket);
-
-						recieveData = recievePacket.getData();
-						if(new Byte(recieveData[15]).intValue() != 1)
-						{
-							os.write(recieveData, 20, 1004);
-						}
-						checkAck = false;
-						System.out.println("After a data packet it recieved");
-					} catch (InterruptedIOException e) {
-						serverSocket.send(sendPacket);
-						System.out.println("Packet needs retransmission: Data ACK");
+			while(checkAck){
+				try {
+					serverSocket.receive(recievePacket);
+					recieveData = recievePacket.getData();
+					if(new Byte(recieveData[15]).intValue() != 1 && fileCreated == false) {
+						os = new FileOutputStream(fileName.substring(2));
+						fileExists = true;
+						fileCreated = true;
 					}
-
-				}
-
-				//send Ack for data
-				if(new Byte(recieveData[15]).intValue() != 1)
-				{
-					convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
-					convertIntsAck = addIntsAck(recieveData,0);
-					ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
-					sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
+					if(new Byte(recieveData[15]).intValue() != 1)
+					{
+						os.write(recieveData, 20, 1004);
+					}
+					checkAck = false;
+				} catch (InterruptedIOException e) {
 					serverSocket.send(sendPacket);
+					System.out.println("Packet needs retransmission: Data ACK");
 				}
+
 			}
 
-			RecieveCloseConn();
-			os.close();   
+			//send Ack for data
+			if(new Byte(recieveData[15]).intValue() != 1)
+			{
+				convertIntsSeq = addIntsSeq(recieveData, recieveData.length-20);
+				convertIntsAck = addIntsAck(recieveData,0);
+				ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
+				sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
+				serverSocket.send(sendPacket);
+			}
 		}
-		else
-		{
-			RecieveCloseConn();
-		}  
+
+		RecieveCloseConn();
+		System.out.println("Exit RecieveClose");
+		if(os != null)
+		  os.close();   
+		System.out.println("Closing OS");
 	}
 
 	private static void checkAckNumber(byte[] seq, byte[] ack, int off) {

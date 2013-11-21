@@ -96,17 +96,16 @@ public final class OriginServer
 				FileInputStream fis = null;
 				boolean fileExists = true;
 				
-				File file = new File("./origin" + fileName.substring(1).trim());
 				try 
 				{
-					fis = new FileInputStream(file);
+					fis = new FileInputStream("./origin" + fileName.substring(1).trim());
 				} 
 				catch (FileNotFoundException e) 
 				{
 					fileExists = false;
 				}
 				
-				boolean waitForACK = false;
+
 				if(fileExists) //Send all of the bytes
 				{
 					convertIntsAck = (addIntsAck(recieveBuffer,0));
@@ -185,6 +184,10 @@ public final class OriginServer
 
 				    System.out.println("CONNECTION CLOSED");
 				    currentlyConnected = false;
+				    for(int i = 0; i < 1024; i++) {
+				    	recieveBuffer[i] = 0;
+				    	sendBuffer[i] = 0;
+				    }
 				}
 				else //Start teardown				
 				{
@@ -221,9 +224,15 @@ public final class OriginServer
 				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 				    serverSocket.send(sendPacket);
 
+				    serverSocket.setSoTimeout(0);
 
 				    System.out.println("CONNECTION CLOSED");
 				    currentlyConnected = false;
+				    for(int i = 0; i < 1024; i++) {
+				      recieveBuffer[i] = 0;
+				      sendBuffer[i] = 0;
+				    }
+				    
 				}
 		    }	    
 		}
