@@ -84,8 +84,8 @@ final class HttpRequest implements Runnable
 		} 
 		else //Cache miss myTCP connection
 		{
-			myNetwork request = new myNetwork(fileName, socket);
-			//myTCP request = new myTCP(fileName, socket);
+
+			myTCP request = new myTCP(fileName, socket);
 		           
 			// Create a new thread to process the request.
 			Thread thread = new Thread(request);  

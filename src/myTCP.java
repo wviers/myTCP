@@ -1,5 +1,4 @@
 import java.io.DataOutputStream;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -8,8 +7,8 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.* ;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Random;
-import java.util.Timer;
 
 final class myTCP implements Runnable
 {
@@ -27,6 +26,8 @@ final class myTCP implements Runnable
 	static int TIMEOUT = 500;
 	static byte[] convertIntsSeq = new byte[4];
 	static byte[] convertIntsAck = new byte[4];
+	static myNetwork net = new myNetwork();
+	static ArrayList<byte[]> recieverBuffer = new ArrayList<byte[]>();
 
 	// Constructor
 	public myTCP(String name, Socket theSocket) throws Exception 
@@ -54,8 +55,7 @@ final class myTCP implements Runnable
 
 	private void processRequest() throws Exception
 	{
-		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
-
+		//Function that sends the SYN to start the handshake
 		Handshake();
 
 		DataLoop();
@@ -163,7 +163,8 @@ final class myTCP implements Runnable
 		ConstructHeader(1, 0, 0, 0, 0);
 
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-		serverSocket.send(sendPacket);
+        //if(net.dropPacket() == 0)
+        	serverSocket.send(sendPacket);
 
 		System.out.println("Proxy sent and should be waiting for origin");
 		while(checkAck){
@@ -190,7 +191,6 @@ final class myTCP implements Runnable
 
 	private static void DataLoop() throws IOException
 	{
-		int nameLength;
 		boolean checkAck = true;
 
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
@@ -200,19 +200,15 @@ final class myTCP implements Runnable
 		ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 
 		temp = fileName.getBytes();
-		nameLength = temp.length;
-
 		for(int i = 0; i < temp.length; i++)
 		{
 			sendData[i + 20] = temp[i];
 		} 
 
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-		serverSocket.send(sendPacket);
-		for(int i = 0; i < 1024; i++) {
-			System.out.print(recieveData[i]);
-		}
-		System.out.println();
+        //if(net.dropPacket() == 0)
+        	serverSocket.send(sendPacket);
+
 		System.out.println("Filename sent");
 
 
@@ -235,9 +231,21 @@ final class myTCP implements Runnable
 						fileExists = true;
 						fileCreated = true;
 					}
-					if(new Byte(recieveData[15]).intValue() != 1)
-					{
-						os.write(recieveData, 20, 1004);
+					if(new Byte(recieveData[15]).intValue() != 1) {
+						if(recievePacket.getLength() < 1024) {
+							byte[] newData = new byte[recievePacket.getLength()];
+							for(int i = 0; i < recievePacket.getLength(); i++)
+								newData[i] = recieveData[i];
+							recieverBuffer.add(newData);
+						    //os.write(newData, 20, newData.length-20);
+						}
+						else {
+							byte[] temp = new byte[recievePacket.getData().length];
+							for(int i = 0; i < recievePacket.getData().length; i++)
+								temp[i] = recievePacket.getData()[i];
+							recieverBuffer.add(temp);
+							//os.write(recievePacket.getData(), 20, recievePacket.getData().length-20);
+						}
 					}
 					checkAck = false;
 				} catch (InterruptedIOException e) {
@@ -254,9 +262,34 @@ final class myTCP implements Runnable
 				convertIntsAck = addIntsAck(recieveData,0);
 				ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 				sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
-				serverSocket.send(sendPacket);
+		        //if(net.dropPacket() == 0)
+		        	serverSocket.send(sendPacket);
 			}
 		}
+		//System.out.println("recieverBuffer size: " + recieverBuffer.size());
+		ArrayList<byte[]> inOrder = new ArrayList<byte[]>();
+		int seq = Integer.MAX_VALUE;
+		int index = 0;
+		int size = recieverBuffer.size();
+		for(int i = 0; i < size; i++) {
+			for(int j = 0; j < recieverBuffer.size(); j++) {
+				seq = returnInt(recieverBuffer.get(j)[4], recieverBuffer.get(j)[5], recieverBuffer.get(j)[6], recieverBuffer.get(j)[7]);
+				if(returnInt(recieverBuffer.get(j)[4], recieverBuffer.get(j)[5], recieverBuffer.get(j)[6], recieverBuffer.get(j)[7]) < seq) {
+					seq = returnInt(recieverBuffer.get(j)[4], recieverBuffer.get(j)[5], recieverBuffer.get(j)[6], recieverBuffer.get(j)[7]);
+				    index = j;
+				}
+			}
+			//System.out.println("index: " + index);
+			//System.out.println("seq: " + seq);
+			byte[] least = new byte[recieverBuffer.get(index).length];
+			for(int a = 0; a < recieverBuffer.get(index).length; a++)
+				least[a] = recieverBuffer.get(index)[a];
+			inOrder.add(least);
+			recieverBuffer.remove(index);
+		}
+		
+		for(int i = 0; i < inOrder.size(); i++)
+			os.write(inOrder.get(i), 20, inOrder.get(i).length-20);
 
 		RecieveCloseConn();
 		System.out.println("Exit RecieveClose");
@@ -327,7 +360,8 @@ final class myTCP implements Runnable
 		convertIntsAck = addIntsAck(recieveData,0);
 		ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-		serverSocket.send(sendPacket);
+        //if(net.dropPacket() == 0)
+        	serverSocket.send(sendPacket);
 		System.out.println("Proxy sent FIN and should be waiting for origin to ACK");
 		int sendCount = 0;
 		
