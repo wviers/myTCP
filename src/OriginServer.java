@@ -7,6 +7,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Random;
 
+
+//The OriginServer class runs constantly waiting for a myTCP request for a handshake.
+//When a packet with the FIN bit set high is received, a connection is established.
+//The server then waits for the packet containing the name of the file to be transmitted.
+//The server returns a 404 if the file is not found or sends the file requested.
+//After all of the bytes of the file is sent the OriginServer class initiates the connection tear-down. 
 public final class OriginServer
 {
     static byte[] copyArray = new byte[4];
@@ -14,7 +20,7 @@ public final class OriginServer
 	static final int port = 2000;
 	static boolean currentlyShaking = false;
 	static boolean currentlyConnected = false;
-	static int TIMEOUT = 50;
+	static int TIMEOUT = 50;  						//Number of milliseconds the socket waits before recieve ends.
 	static byte[] convertIntsSeq = new byte[4];
 	static byte[] convertIntsAck = new byte[4];
 	static myNetwork net = new myNetwork();
@@ -32,22 +38,18 @@ public final class OriginServer
 		@SuppressWarnings("resource")
 		DatagramSocket serverSocket = new DatagramSocket(port);
 		DatagramPacket sendPacket;
+		DatagramPacket recievePacket  = new DatagramPacket(recieveBuffer, 1024);
 		
 		while(true) 
 		{
 			boolean checkAck = true;
-			DatagramPacket recievePacket  = new DatagramPacket(recieveBuffer, 1024);
 			
-			System.out.println();
-			System.out.println();
-			System.out.println();
 			System.out.println("Waiting for packet");
 			
 			//loop for resending handshake
 			if(currentlyShaking==true) {
 				while(checkAck){
 		        	try {
-		        		serverSocket.setSoTimeout(0);
 		        		serverSocket.receive(recievePacket);
 		        		recieveBuffer = recievePacket.getData();
 		        		if(returnInt(recieveBuffer[8],recieveBuffer[9],recieveBuffer[10],recieveBuffer[11]) == (returnInt(sendBuffer[4], sendBuffer[5], sendBuffer[6], sendBuffer[7]) + 1)) {
@@ -78,7 +80,7 @@ public final class OriginServer
 		    	convertIntsSeq = (addIntsSeq(recieveBuffer,1));
 		    	ConstructHeader(1, 1, 0, 0, returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 		        sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-		        //if(net.dropPacket() == 0)
+		        if(net.dropPacket() == 0)
 		        	serverSocket.send(sendPacket);
 		    	currentlyShaking = true;
 		    	serverSocket.setSoTimeout(TIMEOUT);
@@ -165,7 +167,7 @@ public final class OriginServer
 					convertIntsSeq = addIntsSeq(recieveBuffer,0);
 			       	ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 			       	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			        //if(net.dropPacket() == 0)
+			        if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 			       	System.out.println("Sent FIN");
 			       	checkAck = true;
@@ -190,7 +192,7 @@ public final class OriginServer
 				    //ACK the proxie's FIN
 				    ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
 				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			        //if(net.dropPacket() == 0)
+			        if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 
 
@@ -200,6 +202,7 @@ public final class OriginServer
 				    	recieveBuffer[i] = 0;
 				    	sendBuffer[i] = 0;
 				    }
+				    senderBuffer = new ArrayList< byte[]>();
 				}
 				else //Start teardown				
 				{
@@ -209,7 +212,7 @@ public final class OriginServer
 				   	ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 			    	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			        //if(net.dropPacket() == 0)
+			        if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 			    	System.out.println("Sent FIN");
 
@@ -235,7 +238,7 @@ public final class OriginServer
 				    ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			        //if(net.dropPacket() == 0)
+			        if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 
 				    serverSocket.setSoTimeout(0);
@@ -246,6 +249,7 @@ public final class OriginServer
 				      recieveBuffer[i] = 0;
 				      sendBuffer[i] = 0;
 				    }
+				    senderBuffer = new ArrayList< byte[]>();
 				    
 				}
 		    }	    

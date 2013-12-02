@@ -12,7 +12,7 @@ final class myNetwork
 	int dropPacket() {
 		int packetLossStat = 0;
 		Random rad = new Random();
-		dropRate = rad.nextInt(25);
+		dropRate = rad.nextInt(10);
 		
 		if(packetLossStat == dropRate)
 			return 1;
