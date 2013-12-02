@@ -17,6 +17,6 @@ final class myNetwork
 		if(packetLossStat == dropRate)
 			return 1;
 		else
-			return 1;
+			return 0;
 	}
 }
