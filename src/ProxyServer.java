@@ -1,5 +1,8 @@
 import java.net.* ;
 
+
+//The ProxyServer class waits for a request from the browser.
+//When a request is received, it creates an HttpRequest thread to handle it and goes back to waiting for the browser. 
 public final class ProxyServer
 {
 	public static void main(String argv[]) throws Exception
@@ -12,7 +15,6 @@ public final class ProxyServer
 		
 		while (true) 
 		{
-			System.out.println();
 			System.out.println();
 			System.out.println();
 		    System.out.println("Server is ready");

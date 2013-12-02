@@ -2,6 +2,10 @@ import java.io.* ;
 import java.net.* ;
 import java.util.* ;
 
+
+//HttpRequest class is a thread created by the ProxyServer class.
+//It searches the cache for the filename sent from the browser and if it is found, sends it back to the browser.
+//If the file isn't found it creates a myTCP thread which handles the rest of the browser interaction. 
 final class HttpRequest implements Runnable
 {
 	final static String CRLF = "\r\n";
@@ -35,7 +39,6 @@ final class HttpRequest implements Runnable
 		DataOutputStream os = new DataOutputStream(socket.getOutputStream());
 
 		// Set up input stream filters.
-		
 		BufferedReader br = new BufferedReader(new InputStreamReader(is));
 		
 		// Get the request line of the HTTP request message.
@@ -82,7 +85,7 @@ final class HttpRequest implements Runnable
 			statusLine = "HTTP/1.1 200 OK: ";
 			contentTypeLine = "Content-type: " + contentType(fileName) + CRLF;
 		} 
-		else //Cache miss myTCP connection
+		else //Cache miss myTCP connection 
 		{
 
 			myTCP request = new myTCP(fileName, socket);

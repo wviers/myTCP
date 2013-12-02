@@ -46,27 +46,33 @@ public final class OriginServer
 			
 			System.out.println("Waiting for packet");
 			
-			//loop for resending handshake
-			if(currentlyShaking==true) {
-				while(checkAck){
-		        	try {
+			//Receive when a connection is in progress
+			if(currentlyShaking == true) 
+			{
+				while(checkAck)
+				{
+		        	try 
+		        	{
 		        		serverSocket.receive(recievePacket);
 		        		recieveBuffer = recievePacket.getData();
-		        		if(returnInt(recieveBuffer[8],recieveBuffer[9],recieveBuffer[10],recieveBuffer[11]) == (returnInt(sendBuffer[4], sendBuffer[5], sendBuffer[6], sendBuffer[7]) + 1)) {
+		        		if(returnInt(recieveBuffer[8],recieveBuffer[9],recieveBuffer[10],recieveBuffer[11]) == (returnInt(sendBuffer[4], sendBuffer[5], sendBuffer[6], sendBuffer[7]) + 1)) 
+		        		{
 		        			checkAck = false;
 		        			currentlyShaking = false;
 		        			currentlyConnected = true;
 		        			System.out.println("1st Handshake recieved");
 		        		}
-		        	} catch (InterruptedIOException e) {
+		        	} 
+		        	catch (InterruptedIOException e)   //Resends the SYN ACK if timeout occurs
+		        	{
 		        		sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 		        		serverSocket.send(sendPacket);
 		        		System.out.println("Packet needs retransmission: Need SYN, ACK transmission");
 		        	}
-
 		        }
 			}
-			else {
+			else  //Receive when a connection is not in progress
+			{
 				serverSocket.receive(recievePacket);
 			    System.out.println("Recieved a packet");
 			}
@@ -74,23 +80,28 @@ public final class OriginServer
 		    recieveBuffer = recievePacket.getData();
 		    
 		    
-		    //Proxy sent handshake
+		    //If received packet is a SYN
 		    if(new Byte(recieveBuffer[13]).intValue() == 1) //SYN check
 		    {    
 		    	convertIntsSeq = (addIntsSeq(recieveBuffer,1));
 		    	ConstructHeader(1, 1, 0, 0, returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 		        sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-		        if(net.dropPacket() == 0)
+		        
+		        //Random chance to drop a packet
+		        if(net.dropPacket() == 0)			   
 		        	serverSocket.send(sendPacket);
+		        
 		    	currentlyShaking = true;
-		    	serverSocket.setSoTimeout(TIMEOUT);
+		    	
+		    	serverSocket.setSoTimeout(TIMEOUT);    //Socket timeout activated now that server has made a connection
 		    	System.out.println("Sent SYN back to Proxy");
 		    }
-		    //Proxy sent data request
+		    //If received packet is a data request
 		    else if(new Byte(recieveBuffer[14]).intValue() == 1 && currentlyConnected == true)
 		    {	
-		    	serverSocket.setSoTimeout(TIMEOUT);
 		    	int count = 0;
+		    	
+		    	//parse filename from packet
 		    	for(int i = 20; i < 1024; i++)
 		    	{
 		    		if(recieveBuffer[i] != 0)
@@ -112,120 +123,152 @@ public final class OriginServer
 				}
 				
 
-				if(fileExists) //Send all of the bytes
+				if(fileExists) 
 				{
+					//Header for first data packet
 					convertIntsAck = (addIntsAck(recieveBuffer,0));
 					convertIntsSeq = addIntsSeq(recieveBuffer,count);
 			       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 			       	int bytes = 0;
+			        //Send all of the bytes
 			       	while((bytes = fis.read(sendBuffer, 20, 1004)) != -1)
 			       	{
 			       		checkAck = true;
 			       		
+			       		//Condition to ensure no extra bytes are sent in the last packet
 			       		if(bytes < 1004) 
 			       		{
-			       			byte[] lastPack = new byte[bytes+20];
+			       			byte[] lastPack = new byte[bytes + 20];
 			       			
 			       			for(int i = 0; i < bytes+20; i++)
 			       				lastPack[i] = sendBuffer[i];
 			       			
 			       			sendPacket = new DatagramPacket(lastPack, lastPack.length, recievePacket.getAddress(), recievePacket.getPort());
 			       			senderBuffer.add(lastPack);
-					        if(net.dropPacket() == 0) {
-			       			  serverSocket.send(sendPacket); 
-					        }
+			       			
+					        //Random chance to drop a packet
+					        if(net.dropPacket() == 0) 
+					        	serverSocket.send(sendPacket);     
 			       		}
-			       		else {	
+			       		else 
+			       		{	
 			       			sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
 			       			senderBuffer.add(sendBuffer);
-					        if(net.dropPacket() == 0) {
-			       			  serverSocket.send(sendPacket);
-					        }
+			       			
+			       			//Random chance to drop a packet
+					        if(net.dropPacket() == 0) 
+			       			    serverSocket.send(sendPacket);   
 			       		}
 				    	
 				    	//recieve ACK for data
-			    	    while(checkAck){
-			            	try {
+			    	    while(checkAck)
+			    	    {
+			            	try 
+			            	{
 			            		recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
 			            		serverSocket.receive(recievePacket);
 			            		checkAckNumber(sendPacket.getData(), recievePacket.getData(), sendBuffer.length - 20);
 			            		checkAck = false;
-			            	} catch (InterruptedIOException e) {
+			            	} 
+			            	catch (InterruptedIOException e) //Resend data ACK on timeout
+			            	{
 			            		serverSocket.send(sendPacket);
 			            		System.out.println("Packet needs retransmission: data packet");
 			            	}
 			    	    }
 	            		recieveBuffer = recievePacket.getData();
 			    	    
+	            		//Header for next data packet
 			    	    convertIntsAck = addIntsAck(recieveBuffer,0);
 						convertIntsSeq = addIntsSeq(recieveBuffer,0);
 				       	ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 			       	}
 			       	
+			       	
+			       	//Construct header for FIN packet since all data has been sent
 			       	convertIntsAck = addIntsAck(recieveBuffer,0);
 					convertIntsSeq = addIntsSeq(recieveBuffer,0);
 			       	ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 			       	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			        if(net.dropPacket() == 0)
+			        
+			      //Random chance to drop a packet
+			       	if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 			       	System.out.println("Sent FIN");
 			       	checkAck = true;
 			       	
-			        //recieve FIN-ACK
-		    	    while(checkAck){
-		            	try {
+			        //Receive FIN-ACK
+		    	    while(checkAck)
+		    	    {
+		            	try 
+		            	{
 		            		recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
 		            		serverSocket.receive(recievePacket);
 		            		checkAckNumber(sendPacket.getData(), recievePacket.getData(), 1);
 		            		checkAck = false;
-		            	} catch (InterruptedIOException e) {
+		            	} 
+		            	catch (InterruptedIOException e) 
+		            	{
 		            		serverSocket.send(sendPacket);
 		            		System.out.println("Packet needs retransmission: FIN");
 		            	}
 		    	    }
 
 
-	      			serverSocket.setSoTimeout(0);
+	      			serverSocket.setSoTimeout(0);  //Server will go back to waiting state, so disable timeout
 	      			
 
 				    //ACK the proxie's FIN
 				    ConstructHeader(0, 1, 0, ((recieveBuffer[8] << 24) + (recieveBuffer[9] << 16) + (recieveBuffer[10] << 8) + recieveBuffer[11]), ((recieveBuffer[4] << 24) + (recieveBuffer[5] << 16) + (recieveBuffer[6] << 8) + recieveBuffer[7]) + 1, recievePacket.getPort());
 				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
-			        if(net.dropPacket() == 0)
+			        
+				    //Random chance to drop a packet
+				    if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 
 
 				    System.out.println("CONNECTION CLOSED");
+					System.out.println();
+					System.out.println();
 				    currentlyConnected = false;
-				    for(int i = 0; i < 1024; i++) {
+				    
+				  //Reset buffers
+				    for(int i = 0; i < 1024; i++) 
+				    {
 				    	recieveBuffer[i] = 0;
 				    	sendBuffer[i] = 0;
 				    }
-				    senderBuffer = new ArrayList< byte[]>();
+				    senderBuffer = new ArrayList<byte[]>(); 
 				}
-				else //Start teardown				
-				{
+				else //Start tear down if file doesn't exist			
+				{					
 					//Send FIN
 			       	convertIntsAck = addIntsAck(recieveBuffer,0);
 					convertIntsSeq = addIntsSeq(recieveBuffer,0);
 				   	ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 			    	sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+			    	
+			    	//Random chance to drop a packet
 			        if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 			    	System.out.println("Sent FIN");
 
 			       	checkAck = true;
 			       	
-			        //recieve FIN-ACK
-		    	    while(checkAck){
-		            	try {
+			        //receive FIN-ACK
+		    	    while(checkAck)
+		    	    {
+		            	try
+		            	{
 		            		recievePacket = new DatagramPacket(recieveBuffer, recieveBuffer.length, sendPacket.getAddress(), sendPacket.getPort());
 		            		serverSocket.receive(recievePacket);
 		            		checkAckNumber(sendPacket.getData(), recievePacket.getData(), 1);
 		            		checkAck = false;
-		            	} catch (InterruptedIOException e) {
+		            	} 
+		            	catch (InterruptedIOException e) 
+		            	{
 		            		serverSocket.send(sendPacket);
 		            		System.out.println("Packet needs retransmission: FIN");
 		            	}
@@ -238,32 +281,44 @@ public final class OriginServer
 				    ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8], convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4], convertIntsSeq[5], convertIntsSeq[6], convertIntsSeq[7]), recievePacket.getPort());
 
 				    sendPacket = new DatagramPacket(sendBuffer, sendBuffer.length, recievePacket.getAddress(), recievePacket.getPort());
+				    
+				    //Random chance to drop a packet
 			        if(net.dropPacket() == 0)
 			        	serverSocket.send(sendPacket);
 
-				    serverSocket.setSoTimeout(0);
+				    serverSocket.setSoTimeout(0);  //Server will go back to waiting state, so disable timeout
 
 				    System.out.println("CONNECTION CLOSED");
+					System.out.println();
+					System.out.println();
 				    currentlyConnected = false;
-				    for(int i = 0; i < 1024; i++) {
+				    
+				    //Reset buffers
+				    for(int i = 0; i < 1024; i++) 
+				    {
 				      recieveBuffer[i] = 0;
 				      sendBuffer[i] = 0;
 				    }
 				    senderBuffer = new ArrayList< byte[]>();
-				    
 				}
 		    }	    
 		}
 	}
 	
-	private static void checkAckNumber(byte[] seq, byte[] ack, int off) {
+	
+	//This function Checks if the seq converted into an integer + off = the ack
+	private static void checkAckNumber(byte[] seq, byte[] ack, int off) 
+	{
 		convertIntsSeq = addIntsSeq(seq,off);
 		convertIntsAck = addIntsAck(ack,0);
 		if(returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]) != returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]))
 		  System.out.println("Ack does not = seq + data");
 	}
 	
-	private static int returnInt(byte b1, byte b2, byte b3, byte b4) {
+	
+	//This function converts the four bytes to an integer
+	private static int returnInt(byte b1, byte b2, byte b3, byte b4) 
+	{
 		byte[] test = new byte[4];
 	    test[0] = b1;
 	    test[1] = b2;
@@ -273,7 +328,10 @@ public final class OriginServer
 	    return bb.getInt();
 	}
 	
-	private static byte[] addIntsSeq(byte[] buffer, int off) {
+	
+	//This function converts the seq number into an integer and adds the offset
+	private static byte[] addIntsSeq(byte[] buffer, int off) 
+	{
 		byte[] test = new byte[4];
 		test[0] = buffer[4];
 	    test[1] = buffer[5];
@@ -291,7 +349,10 @@ public final class OriginServer
 	    return buffer;   
 	}
 	
-	private static byte[] addIntsAck(byte[] buffer, int off) {
+	
+	//This function converts the ack number into an integer and adds the offset
+	private static byte[] addIntsAck(byte[] buffer, int off) 
+	{
 		byte[] test = new byte[4];
 		test[0] = buffer[8];
 	    test[1] = buffer[9];
@@ -310,9 +371,9 @@ public final class OriginServer
 	}
 
 	
+	//This function fills the send buffer to set up the next send's myTCP header
 	private static void ConstructHeader(int SYN, int ACK, int FIN, int seqNumber, int ackNumber, int sendPort)
 	{
-		
 		//byte 0-1: source port #
 		copyArray = ByteBuffer.allocate(4).putInt(port).array();
 		sendBuffer[0] = copyArray[2];
@@ -324,11 +385,10 @@ public final class OriginServer
 		sendBuffer[3] = copyArray[3];
 		
 		//byte 4-7: seq #
-		if(SYN == 1 && ACK == 1)
+		if(SYN == 1 && ACK == 1) //If first send, initialize a random seq #
 		{
 			Random gen = new Random();
-			//int seq = gen.nextInt(127);
-			int seq = 50;
+			int seq = gen.nextInt(127);
 			copyArray = ByteBuffer.allocate(4).putInt(seq).array();
 			sendBuffer[4] = copyArray[0];
 			sendBuffer[5] = copyArray[1];

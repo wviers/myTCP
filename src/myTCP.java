@@ -10,6 +10,10 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Random;
 
+//myTCP class is a thread created by the HttpRequest class.
+//It sends a myTCP request to the origin server asking for the file name that was not found in the cache.
+//It takes the data received from the server and saves it in the cache, after which it sends the cached file to the browser.
+//If the requested file does not exist on the OriginServer, then a 404 is sent to the browser.
 final class myTCP implements Runnable
 {
 	final static String CRLF = "\r\n";
@@ -23,7 +27,7 @@ final class myTCP implements Runnable
 	static int port;
 	static DatagramSocket serverSocket;
 	static boolean fileExists;
-	static int TIMEOUT = 500;
+	static int TIMEOUT = 500;						//Number of milliseconds the socket waits before recieve ends.
 	static byte[] convertIntsSeq = new byte[4];
 	static byte[] convertIntsAck = new byte[4];
 	static myNetwork net = new myNetwork();
@@ -35,6 +39,8 @@ final class myTCP implements Runnable
 		fileName = name;
 		socket = theSocket;
 		serverSocket = new DatagramSocket();
+		
+		//Socket timeout activated
 		serverSocket.setSoTimeout(TIMEOUT);
 		SetPort(serverSocket.getPort());
 	}
@@ -59,7 +65,6 @@ final class myTCP implements Runnable
 
 		DataLoop();
 
-		// Send the entity body to browser
 		String statusLine = null;
 		String contentTypeLine = null;
 		String entityBody = null;
@@ -98,7 +103,6 @@ final class myTCP implements Runnable
 		socketOut.writeBytes(CRLF);
 
 		// Send the entity body.
-		
 		if (fileExists)
 		{
 			sendBytes(fis, socketOut);
@@ -159,20 +163,27 @@ final class myTCP implements Runnable
 		boolean checkAck = true;
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
 
+		//Initial header for SYN
 		ConstructHeader(1, 0, 0, 0, 0);
 
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
+		
+        //Random chance to drop a packet
         if(net.dropPacket() == 0)
         	serverSocket.send(sendPacket);
 
 		System.out.println("Proxy sent and should be waiting for origin");
-		while(checkAck){
-			try {
+		while(checkAck)
+		{
+			try 
+			{
 				serverSocket.receive(recievePacket);
 				checkAckNumber(sendPacket.getData(), recievePacket.getData(), 1);
 				checkAck = false;
 				System.out.println("After proxy recieve");
-			} catch (InterruptedIOException e) {
+			} 
+			catch (InterruptedIOException e) 
+			{
 				serverSocket.send(sendPacket);
 				System.out.println("Packet needs retransmission: SYN packet not acked");
 			}
@@ -193,11 +204,14 @@ final class myTCP implements Runnable
 		boolean checkAck = true;
 
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
+		
 		//construct filename request(3rd shake)
 		convertIntsSeq = addIntsSeq(recieveData,1);
 		convertIntsAck = addIntsAck(recieveData,0);
 		ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 
+		
+		//Insert the filename into the packet
 		temp = fileName.getBytes();
 		for(int i = 0; i < temp.length; i++)
 		{
@@ -205,7 +219,9 @@ final class myTCP implements Runnable
 		} 
 
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-        //if(net.dropPacket() == 0)
+        
+        //Random chance to drop a packet
+		if(net.dropPacket() == 0)
         	serverSocket.send(sendPacket);
 
 		System.out.println("Filename sent");
@@ -215,39 +231,47 @@ final class myTCP implements Runnable
 		FileOutputStream os = null;
 		boolean fileCreated = false;
 
-		//Read all bytes from server till FIN
-
+		//Read all bytes from server till FIN is received
 		while(new Byte(recieveData[15]).intValue() != 1)
 		{
 			checkAck = true;
 
-			while(checkAck){
-				try {
+			while(checkAck)
+			{
+				try 
+				{
 					serverSocket.receive(recievePacket);
 					recieveData = recievePacket.getData();
-					if(new Byte(recieveData[15]).intValue() != 1 && fileCreated == false) {
+					
+					if(new Byte(recieveData[15]).intValue() != 1 && fileCreated == false) 
+					{
 						os = new FileOutputStream(fileName.substring(2));
 						fileExists = true;
 						fileCreated = true;
 					}
-					if(new Byte(recieveData[15]).intValue() != 1) {
-						if(recievePacket.getLength() < 1024) {
+					if(new Byte(recieveData[15]).intValue() != 1) 
+					{
+						//creates smaller buffer for last packet so file size is the same
+						if(recievePacket.getLength() < 1024) 
+						{
 							byte[] newData = new byte[recievePacket.getLength()];
 							for(int i = 0; i < recievePacket.getLength(); i++)
 								newData[i] = recieveData[i];
 							recieverBuffer.add(newData);
-						    //os.write(newData, 20, newData.length-20);
 						}
-						else {
+						else 
+						{
 							byte[] temp = new byte[recievePacket.getData().length];
 							for(int i = 0; i < recievePacket.getData().length; i++)
 								temp[i] = recievePacket.getData()[i];
 							recieverBuffer.add(temp);
-							//os.write(recievePacket.getData(), 20, recievePacket.getData().length-20);
 						}
 					}
+					
 					checkAck = false;
-				} catch (InterruptedIOException e) {
+				} 
+				catch (InterruptedIOException e) 
+				{
 					serverSocket.send(sendPacket);
 					System.out.println("Packet needs retransmission: Data ACK");
 				}
@@ -261,19 +285,24 @@ final class myTCP implements Runnable
 				convertIntsAck = addIntsAck(recieveData,0);
 				ConstructHeader(0, 1, 0, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
 				sendPacket = new DatagramPacket(sendData, sendData.length, recievePacket.getAddress(), recievePacket.getPort());
-		        if(net.dropPacket() == 0)
+		       
+				//Random chance to drop a packet
+				if(net.dropPacket() == 0)
 		        	serverSocket.send(sendPacket);
 			}
 		}
-		//System.out.println("recieverBuffer size: " + recieverBuffer.size());
+
 		ArrayList<byte[]> inOrder = new ArrayList<byte[]>();
 		int seq = Integer.MAX_VALUE;
-		int index = 0;
-		int size = recieverBuffer.size();
-		for(int i = 0; i < recieverBuffer.size(); i++) {
+		
+		//Sort the receive buffer by sequence number
+		for(int i = 0; i < recieverBuffer.size(); i++) 
+		{
 			seq = returnInt(recieverBuffer.get(i)[4], recieverBuffer.get(i)[5], recieverBuffer.get(i)[6], recieverBuffer.get(i)[7]);
-			for(int j = 0; j < recieverBuffer.size(); j++) {
-				if((returnInt(recieverBuffer.get(j)[4], recieverBuffer.get(j)[5], recieverBuffer.get(j)[6], recieverBuffer.get(j)[7]) == seq) && j != i) {
+			for(int j = 0; j < recieverBuffer.size(); j++) 
+			{
+				if((returnInt(recieverBuffer.get(j)[4], recieverBuffer.get(j)[5], recieverBuffer.get(j)[6], recieverBuffer.get(j)[7]) == seq) && j != i) 
+				{
 					recieverBuffer.remove(j);
 					j=j-1;
 				}
@@ -284,29 +313,41 @@ final class myTCP implements Runnable
 			inOrder.add(temp);
 		}
 		
-		System.out.println("before writing to file");
-		System.out.println("inOrderSize: " + inOrder.size());
-		try {
+		//Write receive buffer to cache file
+		try 
+		{
 			for(int i = 0; i < inOrder.size(); i++) 
+			{
 				if(inOrder.get(i) != null)
 				  os.write(inOrder.get(i), 20, inOrder.get(i).length-20);
-		} catch(NullPointerException e) {}
+			}
+		} 
+		catch(NullPointerException e) {}
 
 		RecieveCloseConn();
+		
 		System.out.println("Exit RecieveClose");
 		if(os != null)
 		  os.close();   
+		
 		System.out.println("Closing OS");
 	}
+	
 
-	private static void checkAckNumber(byte[] seq, byte[] ack, int off) {
+	//This function Checks if the seq converted into an integer + off = the ack
+	private static void checkAckNumber(byte[] seq, byte[] ack, int off) 
+	{
 		convertIntsSeq = addIntsSeq(seq,off);
 		convertIntsAck = addIntsAck(ack,0);
 		if(returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]) != returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]))
 			System.out.println("Ack does not = seq + data");
 	}
 
-	private static int returnInt(byte b1, byte b2, byte b3, byte b4) {
+	
+	
+	//This function converts the four bytes to an integer
+	private static int returnInt(byte b1, byte b2, byte b3, byte b4) 
+	{
 		byte[] test = new byte[4];
 		test[0] = b1;
 		test[1] = b2;
@@ -316,7 +357,10 @@ final class myTCP implements Runnable
 		return bb.getInt();
 	}
 
-	private static byte[] addIntsSeq(byte[] buffer, int off) {
+	
+	//This function converts the seq number into an integer and adds the offset
+	private static byte[] addIntsSeq(byte[] buffer, int off) 
+	{
 		byte[] test = new byte[4];
 		test[0] = buffer[4];
 		test[1] = buffer[5];
@@ -334,7 +378,10 @@ final class myTCP implements Runnable
 		return buffer;   
 	}
 
-	private static byte[] addIntsAck(byte[] buffer, int off) {
+	
+	//This function converts the ack number into an integer and adds the offset
+	private static byte[] addIntsAck(byte[] buffer, int off) 
+	{
 		byte[] test = new byte[4];
 		test[0] = buffer[8];
 		test[1] = buffer[9];
@@ -352,29 +399,39 @@ final class myTCP implements Runnable
 		return buffer; 
 	}
 
+	
 	private static void RecieveCloseConn() throws IOException
 	{
 		DatagramPacket recievePacket  = new DatagramPacket(recieveData, 1024);
 
-		System.out.println("inside pecieveCloseConn");
 		
 		//ACK the origin's FIN with a FIN-ACK
 		convertIntsSeq = addIntsSeq(recieveData, 1);
 		convertIntsAck = addIntsAck(recieveData,0);
 		ConstructHeader(0, 1, 1, returnInt(convertIntsAck[8],convertIntsAck[9],convertIntsAck[10],convertIntsAck[11]), returnInt(convertIntsSeq[4],convertIntsSeq[5],convertIntsSeq[6],convertIntsSeq[7]));
+		
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, socket.getInetAddress(), sendPort);
-        if(net.dropPacket() == 0)
+        
+	    //Random chance to drop a packet		
+		if(net.dropPacket() == 0)
         	serverSocket.send(sendPacket);
+		
 		System.out.println("Proxy sent FIN and should be waiting for origin to ACK");
 		int sendCount = 0;
 		
-		while(sendCount < 10){
-			try {
+		
+		//After 10 FIN ACKS without a response the connection is assumed to be terminated on the OriginServer
+		while(sendCount < 10)
+		{
+			try 
+			{
 				serverSocket.receive(recievePacket);
 				recieveData = recievePacket.getData();
 				sendCount = 10;
 				System.out.println("After sending FIN-ACK");
-			} catch (InterruptedIOException e) {
+			} 
+			catch (InterruptedIOException e) 
+			{
 				sendCount++;
 				serverSocket.send(sendPacket);
 				System.out.println("Packet needs retransmission: FIN ACK");
@@ -385,7 +442,8 @@ final class myTCP implements Runnable
 		System.out.println("CONN successfully closed");
 	}
 
-
+	
+	//This function fills the send buffer to set up the next send's myTCP header
 	private static void ConstructHeader(int SYN, int ACK, int FIN, int seqNumber, int ackNumber)
 	{
 		//byte 0-1: source port #
@@ -402,8 +460,8 @@ final class myTCP implements Runnable
 		if(SYN == 1 && ACK == 0)
 		{
 			Random gen = new Random();
-			//int seq = gen.nextInt(127);
-			int seq = 0;
+			int seq = gen.nextInt(127);  //If first send, initialize a random seq #
+
 			temp = ByteBuffer.allocate(4).putInt(seq).array();
 			sendData[4] = temp[0];
 			sendData[5] = temp[1];
